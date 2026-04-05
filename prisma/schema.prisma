@@ -83,6 +83,8 @@ model GuildConfiguration {
   discordGuildId String   @unique
   apiKey         String?  @db.Text
   channelId      String?
+  zooMemberRoleId String?
+  zooMemberRoleName String?
   warsCount      Int      @default(0)
   racesCount     Int      @default(0)
   invasionsCount Int      @default(0)

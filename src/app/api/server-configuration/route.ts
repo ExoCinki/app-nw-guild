@@ -6,12 +6,80 @@ import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 
 export const dynamic = "force-dynamic";
 
+type DiscordRole = {
+    id: string;
+    name: string;
+    position: number;
+};
+
 function parseNonNegativeInt(value: unknown, fieldName: string): number {
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
         throw new Error(`${fieldName} must be a non-negative integer`);
     }
 
     return value;
+}
+
+async function getDiscordGuildRoles(guildId: string): Promise<{
+    roles: DiscordRole[];
+    rolesError: string | null;
+}> {
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+
+    if (!botToken) {
+        return {
+            roles: [],
+            rolesError: "DISCORD_BOT_TOKEN manquant pour charger les roles.",
+        };
+    }
+
+    const response = await fetch(
+        `https://discord.com/api/v10/guilds/${guildId}/roles`,
+        {
+            headers: {
+                Authorization: `Bot ${botToken}`,
+            },
+            cache: "no-store",
+        },
+    );
+
+    if (!response.ok) {
+        return {
+            roles: [],
+            rolesError: "Impossible de charger les roles Discord pour ce serveur.",
+        };
+    }
+
+    const roles = (await response.json()) as Array<{
+        id: string;
+        name: string;
+        position: number;
+        managed?: boolean;
+        tags?: {
+            bot_id?: string;
+            integration_id?: string;
+        };
+    }>;
+
+    const filtered = roles
+        .filter((role) => role.id !== guildId)
+        .filter(
+            (role) =>
+                !role.managed &&
+                !role.tags?.bot_id &&
+                !role.tags?.integration_id,
+        )
+        .sort((a, b) => b.position - a.position)
+        .map((role) => ({
+            id: role.id,
+            name: role.name,
+            position: role.position,
+        }));
+
+    return {
+        roles: filtered,
+        rolesError: null,
+    };
 }
 
 async function resolveGuildForUser(email: string, guildIdFromQuery: string | null) {
@@ -48,10 +116,14 @@ async function resolveGuildForUser(email: string, guildIdFromQuery: string | nul
     const hasAccess = manageableGuilds.some((guild) => guild.id === guildId);
 
     if (!hasAccess) {
-        return { error: "Guild is not manageable for this account", status: 403 as const };
+        return {
+            error: "Guild is not manageable for this account",
+            status: 403 as const,
+        };
     }
 
-    const guildName = manageableGuilds.find((guild) => guild.id === guildId)?.name ?? null;
+    const guildName =
+        manageableGuilds.find((guild) => guild.id === guildId)?.name ?? null;
 
     return {
         userId: user.id,
@@ -81,6 +153,8 @@ export async function GET(request: Request) {
         select: {
             apiKey: true,
             channelId: true,
+            zooMemberRoleId: true,
+            zooMemberRoleName: true,
             warsCount: true,
             racesCount: true,
             invasionsCount: true,
@@ -91,14 +165,20 @@ export async function GET(request: Request) {
         },
     });
 
+    const { roles, rolesError } = await getDiscordGuildRoles(resolved.guildId);
+
     return NextResponse.json({
         guild: {
             id: resolved.guildId,
             name: resolved.guildName,
         },
+        roles,
+        rolesError,
         configuration: {
             apiKey: config?.apiKey ?? "",
             channelId: config?.channelId ?? "",
+            zooMemberRoleId: config?.zooMemberRoleId ?? "",
+            zooMemberRoleName: config?.zooMemberRoleName ?? "",
             warsCount: config?.warsCount ?? 0,
             racesCount: config?.racesCount ?? 0,
             invasionsCount: config?.invasionsCount ?? 0,
@@ -121,6 +201,7 @@ export async function POST(request: Request) {
         guildId?: string;
         apiKey?: string;
         channelId?: string;
+        zooMemberRoleId?: string | null;
         warsCount?: number;
         racesCount?: number;
         invasionsCount?: number;
@@ -138,23 +219,68 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const apiKey = (payload.apiKey ?? "").trim();
-    const channelId = (payload.channelId ?? "").trim();
+    const existing = await prisma.guildConfiguration.findUnique({
+        where: { discordGuildId: resolved.guildId },
+        select: {
+            apiKey: true,
+            channelId: true,
+            zooMemberRoleId: true,
+            zooMemberRoleName: true,
+            warsCount: true,
+            racesCount: true,
+            invasionsCount: true,
+            vodsCount: true,
+            reviewsCount: true,
+            bonusCount: true,
+        },
+    });
 
-    let warsCount = 0;
-    let racesCount = 0;
-    let invasionsCount = 0;
-    let vodsCount = 0;
-    let reviewsCount = 0;
-    let bonusCount = 0;
+    const hasApiKey = Object.prototype.hasOwnProperty.call(payload, "apiKey");
+    const hasChannelId = Object.prototype.hasOwnProperty.call(payload, "channelId");
+    const hasZooMemberRoleId = Object.prototype.hasOwnProperty.call(
+        payload,
+        "zooMemberRoleId",
+    );
+    const hasWarsCount = Object.prototype.hasOwnProperty.call(payload, "warsCount");
+    const hasRacesCount = Object.prototype.hasOwnProperty.call(payload, "racesCount");
+    const hasInvasionsCount = Object.prototype.hasOwnProperty.call(payload, "invasionsCount");
+    const hasVodsCount = Object.prototype.hasOwnProperty.call(payload, "vodsCount");
+    const hasReviewsCount = Object.prototype.hasOwnProperty.call(payload, "reviewsCount");
+    const hasBonusCount = Object.prototype.hasOwnProperty.call(payload, "bonusCount");
+
+    const apiKey = hasApiKey
+        ? (payload.apiKey ?? "").trim() || null
+        : existing?.apiKey ?? null;
+    const channelId = hasChannelId
+        ? (payload.channelId ?? "").trim() || null
+        : existing?.channelId ?? null;
+
+    let warsCount = existing?.warsCount ?? 0;
+    let racesCount = existing?.racesCount ?? 0;
+    let invasionsCount = existing?.invasionsCount ?? 0;
+    let vodsCount = existing?.vodsCount ?? 0;
+    let reviewsCount = existing?.reviewsCount ?? 0;
+    let bonusCount = existing?.bonusCount ?? 0;
 
     try {
-        warsCount = parseNonNegativeInt(payload.warsCount, "warsCount");
-        racesCount = parseNonNegativeInt(payload.racesCount, "racesCount");
-        invasionsCount = parseNonNegativeInt(payload.invasionsCount, "invasionsCount");
-        vodsCount = parseNonNegativeInt(payload.vodsCount, "vodsCount");
-        reviewsCount = parseNonNegativeInt(payload.reviewsCount, "reviewsCount");
-        bonusCount = parseNonNegativeInt(payload.bonusCount, "bonusCount");
+        if (hasWarsCount) {
+            warsCount = parseNonNegativeInt(payload.warsCount, "warsCount");
+        }
+        if (hasRacesCount) {
+            racesCount = parseNonNegativeInt(payload.racesCount, "racesCount");
+        }
+        if (hasInvasionsCount) {
+            invasionsCount = parseNonNegativeInt(payload.invasionsCount, "invasionsCount");
+        }
+        if (hasVodsCount) {
+            vodsCount = parseNonNegativeInt(payload.vodsCount, "vodsCount");
+        }
+        if (hasReviewsCount) {
+            reviewsCount = parseNonNegativeInt(payload.reviewsCount, "reviewsCount");
+        }
+        if (hasBonusCount) {
+            bonusCount = parseNonNegativeInt(payload.bonusCount, "bonusCount");
+        }
     } catch (error) {
         return NextResponse.json(
             {
@@ -167,11 +293,50 @@ export async function POST(request: Request) {
         );
     }
 
+    let zooMemberRoleId = existing?.zooMemberRoleId ?? null;
+    let zooMemberRoleName = existing?.zooMemberRoleName ?? null;
+
+    if (hasZooMemberRoleId) {
+        const incomingRoleId = (payload.zooMemberRoleId ?? "").trim();
+
+        if (!incomingRoleId) {
+            zooMemberRoleId = null;
+            zooMemberRoleName = null;
+        } else {
+            const { roles, rolesError } = await getDiscordGuildRoles(resolved.guildId);
+
+            if (rolesError) {
+                return NextResponse.json(
+                    {
+                        error: rolesError,
+                    },
+                    { status: 503 },
+                );
+            }
+
+            const selectedRole = roles.find((role) => role.id === incomingRoleId);
+
+            if (!selectedRole) {
+                return NextResponse.json(
+                    {
+                        error: "Le role selectionne est introuvable sur ce serveur.",
+                    },
+                    { status: 400 },
+                );
+            }
+
+            zooMemberRoleId = incomingRoleId;
+            zooMemberRoleName = selectedRole.name;
+        }
+    }
+
     const saved = await prisma.guildConfiguration.upsert({
         where: { discordGuildId: resolved.guildId },
         update: {
-            apiKey: apiKey || null,
-            channelId: channelId || null,
+            apiKey,
+            channelId,
+            zooMemberRoleId,
+            zooMemberRoleName,
             warsCount,
             racesCount,
             invasionsCount,
@@ -181,8 +346,10 @@ export async function POST(request: Request) {
         },
         create: {
             discordGuildId: resolved.guildId,
-            apiKey: apiKey || null,
-            channelId: channelId || null,
+            apiKey,
+            channelId,
+            zooMemberRoleId,
+            zooMemberRoleName,
             warsCount,
             racesCount,
             invasionsCount,
@@ -193,6 +360,8 @@ export async function POST(request: Request) {
         select: {
             apiKey: true,
             channelId: true,
+            zooMemberRoleId: true,
+            zooMemberRoleName: true,
             warsCount: true,
             racesCount: true,
             invasionsCount: true,
@@ -203,14 +372,20 @@ export async function POST(request: Request) {
         },
     });
 
+    const { roles, rolesError } = await getDiscordGuildRoles(resolved.guildId);
+
     return NextResponse.json({
         guild: {
             id: resolved.guildId,
             name: resolved.guildName,
         },
+        roles,
+        rolesError,
         configuration: {
             apiKey: saved.apiKey ?? "",
             channelId: saved.channelId ?? "",
+            zooMemberRoleId: saved.zooMemberRoleId ?? "",
+            zooMemberRoleName: saved.zooMemberRoleName ?? "",
             warsCount: saved.warsCount,
             racesCount: saved.racesCount,
             invasionsCount: saved.invasionsCount,
