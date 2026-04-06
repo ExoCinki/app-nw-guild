@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
+import { publishLiveUpdate } from "@/lib/live-updates";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,8 @@ export async function POST(request: NextRequest) {
                 displayName: payload.displayName || payload.username,
             },
         });
+
+        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
 
         return NextResponse.json(entry, { status: 201 });
     } catch (error) {
@@ -116,6 +119,8 @@ export async function PATCH(request: NextRequest) {
             data: payload.updates || {},
         });
 
+        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
+
         return NextResponse.json(entry);
     } catch (error) {
         console.error("PATCH /api/payout/entries", error);
@@ -165,6 +170,8 @@ export async function DELETE(request: NextRequest) {
         await prisma.payoutEntry.delete({
             where: { id: payload.entryId },
         });
+
+        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
 
         return NextResponse.json({ success: true });
     } catch (error) {

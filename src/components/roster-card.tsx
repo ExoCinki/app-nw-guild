@@ -721,12 +721,17 @@ export function RosterCard() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["roster"],
     queryFn: fetchRoster,
+    refetchOnWindowFocus: true,
   });
 
   const eventsQuery = useQuery({
     queryKey: ["raid-helper-events"],
     queryFn: fetchRaidHelperEvents,
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
   });
 
   const participantsQuery = useQuery({
@@ -734,6 +739,10 @@ export function RosterCard() {
     queryFn: () => fetchRaidHelperParticipants(selectedEventId),
     enabled: Boolean(selectedEventId),
     retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
   });
 
   const selectedEventMutation = useMutation({
@@ -823,6 +832,29 @@ export function RosterCard() {
       setSelectedEventId("");
     }
   }, [data?.roster.selectedEventId, eventsQuery.data?.events, selectedEventId]);
+
+  useEffect(() => {
+    const source = new EventSource("/api/live-updates");
+
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          type?: string;
+          topic?: string;
+        };
+
+        if (payload.type === "update" && payload.topic === "roster") {
+          queryClient.invalidateQueries({ queryKey: ["roster"] });
+        }
+      } catch {
+        // Ignore malformed SSE messages.
+      }
+    };
+
+    return () => {
+      source.close();
+    };
+  }, [queryClient]);
 
   async function handleParticipantDrop(input: {
     groupNumber: number;

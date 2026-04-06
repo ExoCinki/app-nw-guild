@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
+import { publishLiveUpdate } from "@/lib/live-updates";
 
 export const dynamic = "force-dynamic";
 
@@ -174,6 +175,10 @@ export async function POST(request: NextRequest) {
             data: rows,
             skipDuplicates: true,
         });
+
+        if (result.count > 0) {
+            publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
+        }
 
         return NextResponse.json({
             imported: result.count,

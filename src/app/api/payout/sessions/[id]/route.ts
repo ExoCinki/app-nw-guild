@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
+import { publishLiveUpdate } from "@/lib/live-updates";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,8 @@ export async function PATCH(
             include: { entries: { orderBy: { displayName: "asc" } } },
         });
 
+        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
+
         return NextResponse.json(payoutSession);
     } catch (error) {
         console.error("PATCH /api/payout/sessions/[id]", error);
@@ -142,6 +145,8 @@ export async function DELETE(
         await prisma.payoutSession.delete({
             where: { id },
         });
+
+        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
 
         return NextResponse.json({ success: true });
     } catch (error) {

@@ -21,6 +21,7 @@ cp .env.example .env
 - `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`: from Discord Developer Portal
 - `OWNER_DISCORD_ID`: ton Discord user ID (seul owner autorise a modifier la whitelist)
 - `NEXT_PUBLIC_OWNER_DISCORD_ID`: meme valeur que `OWNER_DISCORD_ID` pour afficher la section owner dans l'UI
+- `REDIS_URL` (optional but recommended in production): Redis connection string for live updates across multiple instances (fallback is in-memory if omitted)
 
 3. Create and apply Prisma migration:
 

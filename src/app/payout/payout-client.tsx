@@ -120,6 +120,7 @@ export default function PayoutClient() {
       if (!res.ok) throw new Error("Failed to fetch sessions");
       return res.json() as Promise<PayoutSession[]>;
     },
+    refetchOnWindowFocus: true,
   });
 
   // Fetch guild config for multipliers
@@ -311,6 +312,29 @@ export default function PayoutClient() {
   useEffect(() => {
     updateEntryMutateRef.current = updateEntryMutation.mutate;
   }, [updateEntryMutation.mutate]);
+
+  useEffect(() => {
+    const source = new EventSource("/api/live-updates");
+
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          type?: string;
+          topic?: string;
+        };
+
+        if (payload.type === "update" && payload.topic === "payout") {
+          queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+        }
+      } catch {
+        // Ignore malformed SSE messages.
+      }
+    };
+
+    return () => {
+      source.close();
+    };
+  }, [queryClient]);
 
   // Delete entry with optimistic updates
   const deleteEntryMutation = useMutation({

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { publishLiveUpdate } from "@/lib/live-updates";
 
 export const dynamic = "force-dynamic";
 
@@ -239,6 +240,8 @@ export async function POST(request: Request) {
         },
     });
 
+    publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
+
     return NextResponse.json({
         guild: { id: resolved.guildId, name: resolved.guildName },
         roster: {
@@ -292,6 +295,8 @@ export async function PATCH(request: Request) {
         },
     });
 
+    publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
+
     return NextResponse.json({
         guild: { id: resolved.guildId, name: resolved.guildName },
         roster: {
@@ -342,6 +347,8 @@ export async function DELETE(request: Request) {
             },
         },
     });
+
+    publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
 
     return NextResponse.json({
         guild: { id: resolved.guildId, name: resolved.guildName },
