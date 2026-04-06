@@ -129,3 +129,15 @@ model RosterSlot {
 
   @@unique([groupId, position])
 }
+
+model RosterArchive {
+  id             String   @id @default(cuid())
+  discordGuildId String
+  eventId        String?
+  eventTitle     String?
+  archivedAt     DateTime @default(now())
+  snapshot       Json
+  createdAt      DateTime @default(now())
+
+  @@index([discordGuildId, archivedAt(sort: Desc)])
+}

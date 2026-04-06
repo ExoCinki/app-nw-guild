@@ -76,6 +76,14 @@ export function Navbar() {
                 Roster
               </Link>
             ) : null}
+            {session?.user ? (
+              <Link
+                href="/archives"
+                className={`text-sm font-medium transition ${isActive("/archives")}`}
+              >
+                Archives
+              </Link>
+            ) : null}
             {isOwner ? (
               <Link
                 href="/admin"

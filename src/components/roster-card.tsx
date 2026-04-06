@@ -18,6 +18,7 @@ import {
   faCalendarDays,
   faRotateRight,
   faTrash,
+  faArchive,
 } from "@fortawesome/free-solid-svg-icons";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -367,6 +368,25 @@ async function saveGroup(payload: PostGroupPayload): Promise<RosterResponse> {
   return res.json() as Promise<RosterResponse>;
 }
 
+async function archiveRoster(): Promise<{
+  success: boolean;
+  archiveId: string;
+}> {
+  const res = await fetch("/api/roster/archive", {
+    method: "POST",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Impossible d'archiver le roster.");
+  }
+
+  return res.json() as Promise<{ success: boolean; archiveId: string }>;
+}
+
 async function clearRoster(): Promise<RosterResponse> {
   const res = await fetch("/api/roster", {
     method: "DELETE",
@@ -470,6 +490,7 @@ function GroupCard({
     groupNumber: number;
     slotPosition: number;
     playerName: string;
+    role?: string | null;
   }) => void;
   pendingDropTarget: string | null;
 }) {
@@ -619,10 +640,13 @@ function GroupCard({
                     return;
                   }
 
+                  const resolvedRole = resolveParticipantRole(participant);
+
                   onDropParticipant({
                     groupNumber: group.groupNumber,
                     slotPosition: slot.position,
                     playerName,
+                    role: resolvedRole,
                   });
                 } catch {
                   toast.error("Impossible de lire le participant glisse.");
@@ -702,6 +726,7 @@ export function RosterCard() {
     null,
   );
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["roster"],
@@ -741,6 +766,16 @@ export function RosterCard() {
     onSuccess: (updated) => {
       queryClient.setQueryData(["roster"], updated);
       toast.success("Roster vidé.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
+    },
+  });
+
+  const archiveRosterMutation = useMutation({
+    mutationFn: archiveRoster,
+    onSuccess: () => {
+      toast.success("Roster archivé avec succès.");
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
@@ -803,6 +838,7 @@ export function RosterCard() {
     groupNumber: number;
     slotPosition: number;
     playerName: string;
+    role?: string | null;
   }) {
     const targetGroup = data?.roster.groups.find(
       (group) => group.groupNumber === input.groupNumber,
@@ -825,7 +861,10 @@ export function RosterCard() {
             slot.position === input.slotPosition
               ? input.playerName
               : slot.playerName,
-          role: slot.role,
+          role:
+            slot.position === input.slotPosition
+              ? (input.role ?? slot.role)
+              : slot.role,
         })),
       });
 
@@ -897,6 +936,43 @@ export function RosterCard() {
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
+      {/* ── Archive confirmation modal ─────────────────────────────────── */}
+      {showArchiveConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="text-base font-semibold text-slate-100">
+              Archiver le roster
+            </h3>
+            <p className="mt-2 text-sm text-slate-400">
+              Le roster actuel sera archivé avec tous les joueurs affectés et
+              les groupes configurés. Vous pourrez le consulter dans l'onglet
+              Archives.
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowArchiveConfirm(false)}
+                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-700"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={archiveRosterMutation.isPending}
+                onClick={() => {
+                  setShowArchiveConfirm(false);
+                  archiveRosterMutation.mutate();
+                }}
+                className="flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
+              >
+                <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
+                Archiver
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* ── Clear confirmation modal ──────────────────────────────────── */}
       {showClearConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -933,18 +1009,30 @@ export function RosterCard() {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-100">Roster</h2>
-        <button
-          type="button"
-          onClick={() => setShowClearConfirm(true)}
-          disabled={clearRosterMutation.isPending}
-          className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500/60 hover:bg-red-500/20 disabled:opacity-40"
-          title="Vider le roster"
-        >
-          <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-          Vider
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowArchiveConfirm(true)}
+            disabled={archiveRosterMutation.isPending}
+            className="flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-400 transition hover:border-sky-500/60 hover:bg-sky-500/20 disabled:opacity-40"
+            title="Archiver le roster actuel"
+          >
+            <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
+            Archiver
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowClearConfirm(true)}
+            disabled={clearRosterMutation.isPending}
+            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500/60 hover:bg-red-500/20 disabled:opacity-40"
+            title="Vider le roster"
+          >
+            <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
+            Vider
+          </button>
+        </div>
       </div>
 
       {/* ── Event selector ─────────────────────────────────────────────── */}
