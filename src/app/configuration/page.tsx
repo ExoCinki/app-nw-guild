@@ -16,8 +16,8 @@ export default async function ConfigurationPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-100">Configuration</h1>
           <p className="mt-2 text-slate-400">
-            Configure la cle API et le Discord Channel ID du serveur
-            selectionne.
+            Configure the API key and Discord channel ID for the selected
+            server.
           </p>
         </div>
 

@@ -110,7 +110,7 @@ export function Navbar() {
                     <Image
                       src={selectedGuildQuery.data.selectedGuild.iconUrl}
                       alt={
-                        selectedGuildQuery.data.selectedGuild.name ?? "Serveur"
+                        selectedGuildQuery.data.selectedGuild.name ?? "Server"
                       }
                       width={22}
                       height={22}
@@ -139,14 +139,12 @@ export function Navbar() {
                   <div className="h-8 w-8 rounded-full bg-slate-700" />
                 )}
                 <span className="text-sm font-medium text-slate-200">
-                  {session.user.displayName ??
-                    session.user.name ??
-                    "Utilisateur"}
+                  {session.user.displayName ?? session.user.name ?? "User"}
                 </span>
               </div>
             </div>
           ) : (
-            <div className="text-xs text-slate-400">Non connecté</div>
+            <div className="text-xs text-slate-400">Not signed in</div>
           )}
         </div>
       </div>

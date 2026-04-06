@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -9,10 +9,9 @@ import {
   faTrash,
   faCheck,
   faXmark,
-  faEye,
   faDownload,
-  faPencil,
 } from "@fortawesome/free-solid-svg-icons";
+import { LoadingIndicator } from "@/components/loading-indicator";
 
 interface PayoutSession {
   id: string;
@@ -55,9 +54,54 @@ export default function PayoutClient() {
   );
   const [goldPoolInput, setGoldPoolInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [isImporting, setIsImporting] = useState(false);
+
+  // Local state for counter inputs with debounce
+  const [counterEdits, setCounterEdits] = useState<
+    Record<string, Partial<PayoutEntry>>
+  >({});
+  const debounceTimers = useRef<Record<string, NodeJS.Timeout>>({});
+  const updateEntryMutateRef = useRef<
+    ((data: { entryId: string; updates: Partial<PayoutEntry> }) => void) | null
+  >(null);
 
   const queryClient = useQueryClient();
+
+  // Debounced update function
+  const debouncedUpdate = useCallback(
+    (entryId: string, updates: Partial<PayoutEntry>) => {
+      // Clear existing timer
+      if (debounceTimers.current[entryId]) {
+        clearTimeout(debounceTimers.current[entryId]);
+      }
+
+      // Set new timer that triggers mutation after 300ms of inactivity
+      debounceTimers.current[entryId] = setTimeout(() => {
+        updateEntryMutateRef.current?.({ entryId, updates });
+        // Clear from local edits after sending
+        setCounterEdits((prev) => {
+          const next = { ...prev };
+          delete next[entryId];
+          return next;
+        });
+      }, 300);
+    },
+    [],
+  );
+
+  // Update local state and trigger debounced mutation
+  const handleCounterChange = useCallback(
+    (entryId: string, field: string, value: number) => {
+      setCounterEdits((prev) => ({
+        ...prev,
+        [entryId]: {
+          ...(prev[entryId] || {}),
+          [field]: value,
+        },
+      }));
+      debouncedUpdate(entryId, { [field]: value } as Partial<PayoutEntry>);
+    },
+    [debouncedUpdate],
+  );
 
   // Fetch sessions
   const { data: sessions = [], isLoading: loadingSessions } = useQuery({
@@ -108,9 +152,9 @@ export default function PayoutClient() {
       queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
       setSelectedSessionId(newSession.id);
       setGoldPoolInput("");
-      toast.success("Session créée");
+      toast.success("Session created");
     },
-    onError: () => toast.error("Erreur lors de la création"),
+    onError: () => toast.error("Error while creating session"),
   });
 
   // Add entry
@@ -133,12 +177,12 @@ export default function PayoutClient() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
       setSearchQuery("");
-      toast.success("Joueur ajouté");
+      toast.success("Player added");
     },
-    onError: () => toast.error("Erreur lors de l'ajout"),
+    onError: () => toast.error("Error while adding player"),
   });
 
-  // Update entry
+  // Update entry with optimistic updates
   const updateEntryMutation = useMutation({
     mutationFn: async (data: {
       entryId: string;
@@ -149,16 +193,57 @@ export default function PayoutClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Failed to update entry");
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to update entry");
+      }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+    onMutate: async (data) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["payout-sessions"] });
+
+      // Snapshot current data
+      const previousSessions = queryClient.getQueryData<PayoutSession[]>([
+        "payout-sessions",
+      ]);
+
+      // Update cache optimistically
+      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) => {
+        return old.map((session) => {
+          if (session.id === selectedSessionId) {
+            return {
+              ...session,
+              entries: session.entries.map((entry) =>
+                entry.id === data.entryId
+                  ? { ...entry, ...data.updates }
+                  : entry,
+              ),
+            };
+          }
+          return session;
+        });
+      });
+
+      return { previousSessions };
     },
-    onError: () => toast.error("Erreur lors de la mise à jour"),
+    onError: (error: Error, _, context) => {
+      // Revert on error
+      if (context?.previousSessions) {
+        queryClient.setQueryData(["payout-sessions"], context.previousSessions);
+      }
+      toast.error(`Error: ${error.message}`);
+    },
+    onSuccess: () => {
+      toast.success("Update successful");
+    },
   });
 
-  // Delete entry
+  useEffect(() => {
+    updateEntryMutateRef.current = updateEntryMutation.mutate;
+  }, [updateEntryMutation.mutate]);
+
+  // Delete entry with optimistic updates
   const deleteEntryMutation = useMutation({
     mutationFn: async (entryId: string) => {
       const res = await fetch("/api/payout/entries", {
@@ -169,11 +254,28 @@ export default function PayoutClient() {
       if (!res.ok) throw new Error("Failed to delete entry");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
-      toast.success("Joueur supprimé");
+    onMutate: async (entryId) => {
+      await queryClient.cancelQueries({ queryKey: ["payout-sessions"] });
+      const previousSessions = queryClient.getQueryData<PayoutSession[]>([
+        "payout-sessions",
+      ]);
+
+      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) => {
+        return old.map((session) => ({
+          ...session,
+          entries: session.entries.filter((e) => e.id !== entryId),
+        }));
+      });
+
+      return { previousSessions };
     },
-    onError: () => toast.error("Erreur lors de la suppression"),
+    onError: (error: Error, _, context) => {
+      if (context?.previousSessions) {
+        queryClient.setQueryData(["payout-sessions"], context.previousSessions);
+      }
+      toast.error(`Error: ${error.message}`);
+    },
+    onSuccess: () => toast.success("Player removed"),
   });
 
   // Import roster
@@ -190,9 +292,9 @@ export default function PayoutClient() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
-      toast.success(`${data.imported} joueurs importés`);
+      toast.success(`${data.imported} players imported`);
     },
-    onError: () => toast.error("Erreur lors de l'import"),
+    onError: () => toast.error("Error while importing"),
   });
 
   // Get selected session details
@@ -235,12 +337,12 @@ export default function PayoutClient() {
   }, [selectedSession, guildConfig]);
 
   if (loadingSessions) {
-    return <div className="p-6">Chargement...</div>;
+    return <LoadingIndicator />;
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
-      <h1 className="text-3xl font-bold mb-6">Distribution de Payout</h1>
+      <h1 className="text-3xl font-bold mb-6">Payout Distribution</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sessions List */}
@@ -252,7 +354,7 @@ export default function PayoutClient() {
             <div className="space-y-2 mb-4 p-4 bg-slate-900 rounded border border-slate-700">
               <input
                 type="number"
-                placeholder="Gold à distribuer"
+                placeholder="Gold to distribute"
                 value={goldPoolInput}
                 onChange={(e) => setGoldPoolInput(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-100"
@@ -263,7 +365,7 @@ export default function PayoutClient() {
                 }
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded"
               >
-                <FontAwesomeIcon icon={faPlus} /> Nouvelle session
+                <FontAwesomeIcon icon={faPlus} /> New session
               </button>
             </div>
 
@@ -280,13 +382,13 @@ export default function PayoutClient() {
                   }`}
                 >
                   <div className="text-sm font-mono">
-                    {new Date(session.createdAt).toLocaleDateString("fr-FR")}
+                    {new Date(session.createdAt).toLocaleDateString("en-US")}
                   </div>
                   <div className="text-lg font-semibold">
                     {session.goldPool.toFixed(0)} or
                   </div>
                   <div className="text-xs text-slate-400">
-                    {session.entries.length} joueurs
+                    {session.entries.length} players
                   </div>
                 </button>
               ))}
@@ -299,25 +401,25 @@ export default function PayoutClient() {
           <div className="lg:col-span-2 space-y-6">
             {/* Gold Pool Editor */}
             <div className="p-4 bg-slate-900 rounded border border-slate-700">
-              <h3 className="font-semibold mb-3">Paramètres</h3>
-              <label className="block text-sm mb-2">Gold à distribuer:</label>
+              <h3 className="font-semibold mb-3">Settings</h3>
+              <label className="block text-sm mb-2">Gold to distribute:</label>
               <input
                 type="number"
                 value={selectedSession.goldPool}
-                onChange={(e) => {
+                onChange={() => {
                   // Update session gold pool
                 }}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-100 mb-4"
               />
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="bg-slate-800 px-3 py-2 rounded">
-                  <div className="text-slate-400">Points totaux</div>
+                  <div className="text-slate-400">Total points</div>
                   <div className="text-lg font-semibold">
                     {calculations.totalPoints}
                   </div>
                 </div>
                 <div className="bg-slate-800 px-3 py-2 rounded">
-                  <div className="text-slate-400">Gold par point</div>
+                  <div className="text-slate-400">Gold per point</div>
                   <div className="text-lg font-semibold">
                     {calculations.goldPerPoint.toFixed(2)}
                   </div>
@@ -327,15 +429,29 @@ export default function PayoutClient() {
 
             {/* Add Players */}
             <div className="p-4 bg-slate-900 rounded border border-slate-700">
-              <h3 className="font-semibold mb-3">Ajouter des joueurs</h3>
+              <h3 className="font-semibold mb-3">Add players</h3>
               <div className="space-y-2">
+                <button
+                  onClick={() => importRosterMutation.mutate()}
+                  disabled={importRosterMutation.isPending}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-1 bg-green-700 hover:bg-green-800 rounded text-xs disabled:opacity-50"
+                >
+                  <FontAwesomeIcon icon={faDownload} /> Import from roster
+                </button>
+
                 <input
                   type="text"
-                  placeholder="Chercher par nom ou username..."
+                  placeholder="Search by display name or username..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-100"
                 />
+
+                {searchQuery.length >= 2 && searchResults.length === 0 && (
+                  <div className="text-xs text-slate-400 text-center py-2">
+                    No player found
+                  </div>
+                )}
 
                 {searchQuery.length >= 2 && searchResults.length > 0 && (
                   <div className="max-h-48 overflow-y-auto space-y-1">
@@ -361,13 +477,6 @@ export default function PayoutClient() {
                     ))}
                   </div>
                 )}
-
-                <button
-                  onClick={() => importRosterMutation.mutate()}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-700 hover:bg-green-800 rounded text-sm"
-                >
-                  <FontAwesomeIcon icon={faDownload} /> Importer du roster
-                </button>
               </div>
             </div>
 
@@ -376,161 +485,182 @@ export default function PayoutClient() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-700">
-                    <th className="text-left px-3 py-2">Joueur</th>
-                    <th className="text-center px-3 py-2">Guerres</th>
-                    <th className="text-center px-3 py-2">Courses</th>
-                    <th className="text-center px-3 py-2">Revues</th>
+                    <th className="text-left px-3 py-2">Player</th>
+                    <th className="text-center px-3 py-2">Wars</th>
+                    <th className="text-center px-3 py-2">Races</th>
+                    <th className="text-center px-3 py-2">Reviews</th>
                     <th className="text-center px-3 py-2">Bonus</th>
                     <th className="text-center px-3 py-2">Invasions</th>
                     <th className="text-center px-3 py-2">VODs</th>
                     <th className="text-center px-3 py-2">Points</th>
                     <th className="text-center px-3 py-2">Gold</th>
-                    <th className="text-center px-3 py-2">Payé</th>
+                    <th className="text-center px-3 py-2">Paid</th>
                     <th className="text-center px-3 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {calculations.entries.map((entry) => (
-                    <tr
-                      key={entry.id}
-                      className="border-b border-slate-800 hover:bg-slate-900"
-                    >
-                      <td className="px-3 py-2 font-semibold">
-                        {entry.displayName || entry.username}
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={entry.wars}
-                          onChange={(e) =>
-                            updateEntryMutation.mutate({
-                              entryId: entry.id,
-                              updates: {
-                                wars: parseInt(e.target.value) || 0,
-                              } as Partial<PayoutEntry>,
-                            })
-                          }
-                          className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
-                        />
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={entry.races}
-                          onChange={(e) =>
-                            updateEntryMutation.mutate({
-                              entryId: entry.id,
-                              updates: {
-                                races: parseInt(e.target.value) || 0,
-                              } as Partial<PayoutEntry>,
-                            })
-                          }
-                          className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
-                        />
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={entry.reviews}
-                          onChange={(e) =>
-                            updateEntryMutation.mutate({
-                              entryId: entry.id,
-                              updates: {
-                                reviews: parseInt(e.target.value) || 0,
-                              } as Partial<PayoutEntry>,
-                            })
-                          }
-                          className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
-                        />
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={entry.bonus}
-                          onChange={(e) =>
-                            updateEntryMutation.mutate({
-                              entryId: entry.id,
-                              updates: {
-                                bonus: parseInt(e.target.value) || 0,
-                              } as Partial<PayoutEntry>,
-                            })
-                          }
-                          className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
-                        />
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={entry.invasions}
-                          onChange={(e) =>
-                            updateEntryMutation.mutate({
-                              entryId: entry.id,
-                              updates: {
-                                invasions: parseInt(e.target.value) || 0,
-                              } as Partial<PayoutEntry>,
-                            })
-                          }
-                          className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
-                        />
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <input
-                          type="number"
-                          min="0"
-                          value={entry.vods}
-                          onChange={(e) =>
-                            updateEntryMutation.mutate({
-                              entryId: entry.id,
-                              updates: {
-                                vods: parseInt(e.target.value) || 0,
-                              } as Partial<PayoutEntry>,
-                            })
-                          }
-                          className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
-                        />
-                      </td>
-                      <td className="text-center px-3 py-2 font-semibold">
-                        {entry.points}
-                      </td>
-                      <td className="text-center px-3 py-2 text-yellow-400 font-semibold">
-                        {(entry.points * calculations.goldPerPoint).toFixed(0)}
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <button
-                          onClick={() =>
-                            updateEntryMutation.mutate({
-                              entryId: entry.id,
-                              updates: {
-                                isPaid: !entry.isPaid,
-                              } as Partial<PayoutEntry>,
-                            })
-                          }
-                          className={`px-2 py-1 rounded transition-colors ${
-                            entry.isPaid
-                              ? "bg-green-700 text-white"
-                              : "bg-slate-700 text-slate-400"
-                          }`}
-                        >
-                          <FontAwesomeIcon
-                            icon={entry.isPaid ? faCheck : faXmark}
+                  {calculations.entries.map((entry) => {
+                    const localEdits = counterEdits[entry.id] || {};
+                    const displayEntry = { ...entry, ...localEdits };
+
+                    return (
+                      <tr
+                        key={entry.id}
+                        className="border-b border-slate-800 hover:bg-slate-900"
+                      >
+                        <td className="px-3 py-2 font-semibold">
+                          {entry.displayName || entry.username}
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={displayEntry.wars}
+                            onChange={(e) =>
+                              handleCounterChange(
+                                entry.id,
+                                "wars",
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
                           />
-                        </button>
-                      </td>
-                      <td className="text-center px-3 py-2">
-                        <button
-                          onClick={() => deleteEntryMutation.mutate(entry.id)}
-                          className="px-2 py-1 bg-red-900 hover:bg-red-800 rounded text-red-200"
-                        >
-                          <FontAwesomeIcon icon={faTrash} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={displayEntry.races}
+                            onChange={(e) =>
+                              handleCounterChange(
+                                entry.id,
+                                "races",
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                          />
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={displayEntry.reviews}
+                            onChange={(e) =>
+                              handleCounterChange(
+                                entry.id,
+                                "reviews",
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                          />
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={displayEntry.bonus}
+                            onChange={(e) =>
+                              handleCounterChange(
+                                entry.id,
+                                "bonus",
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                          />
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={displayEntry.invasions}
+                            onChange={(e) =>
+                              handleCounterChange(
+                                entry.id,
+                                "invasions",
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                          />
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={displayEntry.vods}
+                            onChange={(e) =>
+                              handleCounterChange(
+                                entry.id,
+                                "vods",
+                                parseInt(e.target.value) || 0,
+                              )
+                            }
+                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                          />
+                        </td>
+                        <td className="text-center px-3 py-2 font-semibold">
+                          {displayEntry.wars * calculations.multipliers.wars +
+                            displayEntry.races *
+                              calculations.multipliers.races +
+                            displayEntry.reviews *
+                              calculations.multipliers.reviews +
+                            displayEntry.bonus *
+                              calculations.multipliers.bonus +
+                            displayEntry.invasions *
+                              calculations.multipliers.invasions +
+                            displayEntry.vods * calculations.multipliers.vods}
+                        </td>
+                        <td className="text-center px-3 py-2 text-yellow-400 font-semibold">
+                          {(
+                            (displayEntry.wars * calculations.multipliers.wars +
+                              displayEntry.races *
+                                calculations.multipliers.races +
+                              displayEntry.reviews *
+                                calculations.multipliers.reviews +
+                              displayEntry.bonus *
+                                calculations.multipliers.bonus +
+                              displayEntry.invasions *
+                                calculations.multipliers.invasions +
+                              displayEntry.vods *
+                                calculations.multipliers.vods) *
+                            calculations.goldPerPoint
+                          ).toFixed(0)}
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <button
+                            onClick={() =>
+                              updateEntryMutation.mutate({
+                                entryId: entry.id,
+                                updates: {
+                                  isPaid: !entry.isPaid,
+                                } as Partial<PayoutEntry>,
+                              })
+                            }
+                            className={`px-2 py-1 rounded transition-colors ${
+                              entry.isPaid
+                                ? "bg-green-700 text-white"
+                                : "bg-slate-700 text-slate-400"
+                            }`}
+                          >
+                            <FontAwesomeIcon
+                              icon={entry.isPaid ? faCheck : faXmark}
+                            />
+                          </button>
+                        </td>
+                        <td className="text-center px-3 py-2">
+                          <button
+                            onClick={() => deleteEntryMutation.mutate(entry.id)}
+                            className="px-2 py-1 bg-red-900 hover:bg-red-800 rounded text-red-200"
+                          >
+                            <FontAwesomeIcon icon={faTrash} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -544,13 +674,13 @@ export default function PayoutClient() {
                 </div>
               </div>
               <div>
-                <div className="text-sm text-slate-400">Points totaux</div>
+                <div className="text-sm text-slate-400">Total points</div>
                 <div className="text-2xl font-bold text-blue-400">
                   {calculations.totalPoints}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-slate-400">Prix par point</div>
+                <div className="text-sm text-slate-400">Price per point</div>
                 <div className="text-2xl font-bold text-emerald-400">
                   {calculations.goldPerPoint.toFixed(2)}
                 </div>
@@ -561,8 +691,8 @@ export default function PayoutClient() {
           <div className="lg:col-span-2 flex items-center justify-center p-6 bg-slate-900 rounded border border-slate-700">
             <div className="text-center text-slate-400">
               {sessions.length === 0
-                ? "Créez une nouvelle session pour commencer"
-                : "Sélectionnez une session"}
+                ? "Create a new session to get started"
+                : "Select a session"}
             </div>
           </div>
         )}

@@ -17,7 +17,7 @@ export default async function AdminPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-100">Administration</h1>
           <p className="mt-2 text-slate-400">
-            Gere les serveurs autorises sur cette plateforme.
+            Manage authorized servers on this platform.
           </p>
         </div>
 

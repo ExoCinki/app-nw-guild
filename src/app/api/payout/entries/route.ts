@@ -54,11 +54,11 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
         }
 
-        const { entryId, ...updates } = await request.json();
+        const { entryId, updates } = await request.json();
 
         const entry = await prisma.payoutEntry.update({
             where: { id: entryId },
-            data: updates,
+            data: updates || {},
         });
 
         return NextResponse.json(entry);

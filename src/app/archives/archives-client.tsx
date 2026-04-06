@@ -10,6 +10,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { LoadingIndicator } from "@/components/loading-indicator";
 
 type Archive = {
   id: string;
@@ -46,7 +47,7 @@ async function fetchArchives(): Promise<{ archives: Archive[] }> {
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(err?.error ?? "Impossible de charger les archives.");
+    throw new Error(err?.error ?? "Unable to load archives.");
   }
 
   return res.json();
@@ -63,7 +64,7 @@ async function fetchArchiveDetail(
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(err?.error ?? "Impossible de charger l'archive.");
+    throw new Error(err?.error ?? "Unable to load archive.");
   }
 
   return res.json();
@@ -102,11 +103,7 @@ export function ArchivesClient() {
   });
 
   if (archivesQuery.isLoading) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6">
-        Chargement des archives...
-      </div>
-    );
+    return <LoadingIndicator />;
   }
 
   if (archivesQuery.isError) {
@@ -114,7 +111,7 @@ export function ArchivesClient() {
       <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-300">
         {archivesQuery.error instanceof Error
           ? archivesQuery.error.message
-          : "Impossible de charger les archives."}
+          : "Unable to load archives."}
       </div>
     );
   }
@@ -132,29 +129,25 @@ export function ArchivesClient() {
         <div className="flex items-center gap-3">
           <FontAwesomeIcon icon={faArchive} className="h-5 w-5 text-sky-400" />
           <h2 className="text-xl font-semibold text-slate-100">
-            Archives Roster
+            Roster Archives
           </h2>
         </div>
 
-        <p className="mt-1 text-sm text-slate-400">
-          Consultez les rosters archivés
-        </p>
+        <p className="mt-1 text-sm text-slate-400">View archived rosters</p>
 
         {archives.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">
-            Aucune archive pour le moment.
-          </p>
+          <p className="mt-4 text-sm text-slate-500">No archive yet.</p>
         ) : (
           <>
             <div className="mt-6 space-y-3">
               {paginatedArchives.map((archive) => {
                 const archivedDate = new Date(archive.archivedAt);
-                const dateStr = archivedDate.toLocaleDateString("fr-FR", {
+                const dateStr = archivedDate.toLocaleDateString("en-US", {
                   day: "2-digit",
                   month: "2-digit",
                   year: "numeric",
                 });
-                const timeStr = archivedDate.toLocaleTimeString("fr-FR", {
+                const timeStr = archivedDate.toLocaleTimeString("en-US", {
                   hour: "2-digit",
                   minute: "2-digit",
                 });
@@ -172,14 +165,14 @@ export function ArchivesClient() {
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <p className="font-medium text-slate-200">
-                          {archive.eventTitle || "Roster (sans event)"}
+                          {archive.eventTitle || "Roster (no event)"}
                         </p>
                         <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
                           <FontAwesomeIcon
                             icon={faCalendar}
                             className="h-3 w-3"
                           />
-                          {dateStr} à {timeStr}
+                          {dateStr} at {timeStr}
                         </div>
                       </div>
                       <FontAwesomeIcon
@@ -203,11 +196,11 @@ export function ArchivesClient() {
                   className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <FontAwesomeIcon icon={faChevronLeft} className="h-3 w-3" />
-                  Précédent
+                  Previous
                 </button>
 
                 <div className="text-xs text-slate-400">
-                  Page {currentPage} sur {totalPages}
+                  Page {currentPage} of {totalPages}
                 </div>
 
                 <button
@@ -218,7 +211,7 @@ export function ArchivesClient() {
                   disabled={currentPage === totalPages}
                   className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-600 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Suivant
+                  Next
                   <FontAwesomeIcon icon={faChevronRight} className="h-3 w-3" />
                 </button>
               </div>
@@ -230,7 +223,7 @@ export function ArchivesClient() {
       {selectedArchiveId && detailQuery.data ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
           <h3 className="text-lg font-semibold text-slate-100">
-            Détail de l'archive
+            Archive details
           </h3>
 
           <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-5">
@@ -241,7 +234,7 @@ export function ArchivesClient() {
               >
                 <div className="border-b border-slate-700 bg-slate-900/60 px-3 py-2">
                   <p className="truncate text-xs font-semibold text-slate-300">
-                    {group.name || `Groupe ${group.groupNumber}`}
+                    {group.name || `Group ${group.groupNumber}`}
                   </p>
                 </div>
 
@@ -265,7 +258,7 @@ export function ArchivesClient() {
                         </div>
                       ) : (
                         <div className="rounded-md border border-slate-700/40 px-2 py-1.5 text-center italic text-slate-600">
-                          Vide
+                          Empty
                         </div>
                       )}
                     </div>

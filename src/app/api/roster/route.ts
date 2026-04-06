@@ -212,11 +212,11 @@ export async function POST(request: Request) {
                     groupId: group.id,
                     position: slot.position,
                     playerName: slot.playerName?.trim() || null,
-                    role: slot.role || null,
+                    role: slot.playerName?.trim() ? slot.role || null : null,
                 },
                 update: {
                     playerName: slot.playerName?.trim() || null,
-                    role: slot.role || null,
+                    role: slot.playerName?.trim() ? slot.role || null : null,
                 },
             }),
         ),

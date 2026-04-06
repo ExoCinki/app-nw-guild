@@ -5,6 +5,7 @@ import { faCheck, faPencil, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { LoadingIndicator } from "@/components/loading-indicator";
 
 type ServerConfigurationResponse = {
   guild: {
@@ -65,9 +66,7 @@ async function getServerConfiguration(): Promise<ServerConfigurationResponse> {
     const payload = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(
-      payload?.error ?? "Impossible de charger la configuration.",
-    );
+    throw new Error(payload?.error ?? "Unable to load configuration.");
   }
 
   return response.json() as Promise<ServerConfigurationResponse>;
@@ -89,9 +88,7 @@ async function saveServerConfiguration(
     const errorPayload = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(
-      errorPayload?.error ?? "Impossible de sauvegarder la configuration.",
-    );
+    throw new Error(errorPayload?.error ?? "Unable to save configuration.");
   }
 
   return response.json() as Promise<ServerConfigurationResponse>;
@@ -118,7 +115,7 @@ function EditButtons({
           className="rounded-md border border-emerald-500/60 px-1.5 py-1 text-emerald-400/70 disabled:opacity-40"
           onClick={onSave}
           disabled={isPending}
-          aria-label="Valider"
+          aria-label="Confirm"
         >
           <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />
         </button>
@@ -127,7 +124,7 @@ function EditButtons({
           className="rounded-md border border-rose-500/60 px-1.5 py-1 text-rose-400/70 disabled:opacity-40"
           onClick={onCancel}
           disabled={isPending}
-          aria-label="Annuler"
+          aria-label="Cancel"
         >
           <FontAwesomeIcon icon={faXmark} className="h-2.5 w-2.5" />
         </button>
@@ -139,7 +136,7 @@ function EditButtons({
       type="button"
       className="rounded-md border border-slate-700/60 px-1.5 py-1 text-slate-500 hover:text-slate-300 transition-colors"
       onClick={onEdit}
-      aria-label="Modifier"
+      aria-label="Edit"
     >
       <FontAwesomeIcon icon={faPencil} className="h-2.5 w-2.5" />
     </button>
@@ -247,7 +244,7 @@ export function ServerConfigurationCard() {
     if (field === "warsCount") {
       const value = Number(warsCount);
       if (!Number.isInteger(value) || value < 0) {
-        toast.error("Nb Wars doit etre un entier >= 0.");
+        toast.error("War points must be an integer >= 0.");
         return;
       }
       payload.warsCount = value;
@@ -255,7 +252,7 @@ export function ServerConfigurationCard() {
     if (field === "racesCount") {
       const value = Number(racesCount);
       if (!Number.isInteger(value) || value < 0) {
-        toast.error("Nb Races doit etre un entier >= 0.");
+        toast.error("Race points must be an integer >= 0.");
         return;
       }
       payload.racesCount = value;
@@ -263,7 +260,7 @@ export function ServerConfigurationCard() {
     if (field === "invasionsCount") {
       const value = Number(invasionsCount);
       if (!Number.isInteger(value) || value < 0) {
-        toast.error("Nb Invasion doit etre un entier >= 0.");
+        toast.error("Invasion points must be an integer >= 0.");
         return;
       }
       payload.invasionsCount = value;
@@ -271,7 +268,7 @@ export function ServerConfigurationCard() {
     if (field === "vodsCount") {
       const value = Number(vodsCount);
       if (!Number.isInteger(value) || value < 0) {
-        toast.error("Nb Vods doit etre un entier >= 0.");
+        toast.error("VOD points must be an integer >= 0.");
         return;
       }
       payload.vodsCount = value;
@@ -279,7 +276,7 @@ export function ServerConfigurationCard() {
     if (field === "reviewsCount") {
       const value = Number(reviewsCount);
       if (!Number.isInteger(value) || value < 0) {
-        toast.error("Nb Reviews doit etre un entier >= 0.");
+        toast.error("Review points must be an integer >= 0.");
         return;
       }
       payload.reviewsCount = value;
@@ -287,7 +284,7 @@ export function ServerConfigurationCard() {
     if (field === "bonusCount") {
       const value = Number(bonusCount);
       if (!Number.isInteger(value) || value < 0) {
-        toast.error("Nb Bonus doit etre un entier >= 0.");
+        toast.error("Bonus points must be an integer >= 0.");
         return;
       }
       payload.bonusCount = value;
@@ -299,10 +296,10 @@ export function ServerConfigurationCard() {
       queryClient.setQueryData(["server-configuration"], data);
       syncFromConfigurationData(data);
       setEditingField(null);
-      toast.success("Configuration sauvegardee.");
+      toast.success("Configuration saved.");
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Erreur API inconnue.";
+        error instanceof Error ? error.message : "Unknown API error.";
       toast.error(message);
     } finally {
       setPendingField(null);
@@ -310,18 +307,14 @@ export function ServerConfigurationCard() {
   }
 
   if (configurationQuery.isLoading) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 text-sm text-slate-300">
-        Chargement de la configuration serveur...
-      </div>
-    );
+    return <LoadingIndicator />;
   }
 
   if (configurationQuery.isError) {
     const errorMessage =
       configurationQuery.error instanceof Error
         ? configurationQuery.error.message
-        : "Impossible de charger la configuration.";
+        : "Unable to load configuration.";
 
     return (
       <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-300">
@@ -338,10 +331,10 @@ export function ServerConfigurationCard() {
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
       <h2 className="text-xl font-semibold text-slate-100">
-        Configuration serveur
+        Server configuration
       </h2>
       <p className="mt-2 text-sm text-slate-400">
-        Configure les parametres pour
+        Configure settings for
         <span className="ml-1 font-medium text-emerald-300">
           {guild?.name || guild?.id}
         </span>
@@ -352,7 +345,7 @@ export function ServerConfigurationCard() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">
-              Cle API
+              API key
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -410,7 +403,7 @@ export function ServerConfigurationCard() {
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-300">
-              Role Membres Zoo
+              Member role
             </label>
             <div className="flex items-center gap-2">
               <select
@@ -422,12 +415,12 @@ export function ServerConfigurationCard() {
                 }
                 className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
               >
-                <option value="">-- Aucun role --</option>
+                <option value="">-- No role --</option>
                 {!selectedRoleExists && zooMemberRoleId ? (
                   <option value={zooMemberRoleId}>
                     {configurationQuery.data?.configuration.zooMemberRoleName ||
                       zooMemberRoleId}{" "}
-                    (introuvable)
+                    (not found)
                   </option>
                 ) : null}
                 {roles.map((role) => (

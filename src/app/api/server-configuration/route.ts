@@ -107,8 +107,8 @@ async function getDiscordGuildRoles(guildId: string): Promise<{
         roles: [],
         rolesError:
             lastStatus !== null
-                ? `Impossible de charger les roles Discord pour ce serveur (status ${lastStatus}).`
-                : "Impossible de charger les roles Discord pour ce serveur.",
+                ? `Unable to load Discord roles for this server (status ${lastStatus}).`
+                : "Unable to load Discord roles for this server.",
     };
 }
 
@@ -349,7 +349,7 @@ export async function POST(request: Request) {
             if (!selectedRole) {
                 return NextResponse.json(
                     {
-                        error: "Le role selectionne est introuvable sur ce serveur.",
+                        error: "The selected role was not found on this server.",
                     },
                     { status: 400 },
                 );

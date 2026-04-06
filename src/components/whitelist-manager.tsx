@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
+import { InlineLoadingIndicator } from "@/components/loading-indicator";
 
 type WhitelistGuild = {
   discordGuildId: string;
@@ -28,7 +29,7 @@ async function getWhitelist(): Promise<WhitelistResponse> {
     const payload = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(payload?.error ?? "Impossible de charger la whitelist.");
+    throw new Error(payload?.error ?? "Unable to load whitelist.");
   }
 
   return response.json() as Promise<WhitelistResponse>;
@@ -48,7 +49,7 @@ async function addWhitelistGuild(payload: { guildId: string; name?: string }) {
     const errorPayload = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(errorPayload?.error ?? "Ajout whitelist impossible.");
+    throw new Error(errorPayload?.error ?? "Unable to add whitelist entry.");
   }
 }
 
@@ -65,7 +66,7 @@ async function removeWhitelistGuild(guildId: string) {
     const errorPayload = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(errorPayload?.error ?? "Suppression whitelist impossible.");
+    throw new Error(errorPayload?.error ?? "Unable to remove whitelist entry.");
   }
 }
 
@@ -83,14 +84,14 @@ export function WhitelistManager() {
   const addWhitelistMutation = useMutation({
     mutationFn: addWhitelistGuild,
     onSuccess: async () => {
-      toast.success("Serveur whitelist ajoute.");
+      toast.success("Server added to whitelist.");
       setGuildIdInput("");
       setGuildNameInput("");
       await queryClient.invalidateQueries({ queryKey: ["whitelist"] });
     },
     onError: (error) => {
       const message =
-        error instanceof Error ? error.message : "Erreur API inconnue.";
+        error instanceof Error ? error.message : "Unknown API error.";
       toast.error(message);
     },
   });
@@ -98,12 +99,12 @@ export function WhitelistManager() {
   const removeWhitelistMutation = useMutation({
     mutationFn: removeWhitelistGuild,
     onSuccess: async () => {
-      toast.success("Serveur retire de la whitelist.");
+      toast.success("Server removed from whitelist.");
       await queryClient.invalidateQueries({ queryKey: ["whitelist"] });
     },
     onError: (error) => {
       const message =
-        error instanceof Error ? error.message : "Erreur API inconnue.";
+        error instanceof Error ? error.message : "Unknown API error.";
       toast.error(message);
     },
   });
@@ -112,10 +113,10 @@ export function WhitelistManager() {
     <div className="space-y-6">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
         <h2 className="text-lg font-semibold text-slate-100">
-          Gestion de la whitelist
+          Whitelist management
         </h2>
         <p className="mt-1 text-sm text-slate-400">
-          Ajoute ou retire les serveurs autorises.
+          Add or remove authorized servers.
         </p>
 
         <div className="mt-6 space-y-4">
@@ -134,12 +135,12 @@ export function WhitelistManager() {
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Nom (optionnel)
+                Name (optional)
               </label>
               <input
                 value={guildNameInput}
                 onChange={(event) => setGuildNameInput(event.target.value)}
-                placeholder="ex: Mon super serveur"
+                placeholder="ex: My great server"
                 className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
               />
             </div>
@@ -156,24 +157,22 @@ export function WhitelistManager() {
               });
             }}
           >
-            Ajouter a la whitelist
+            Add to whitelist
           </button>
         </div>
       </div>
 
       <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
         <h3 className="text-lg font-semibold text-slate-100">
-          Serveurs whitelistes
+          Whitelisted servers
         </h3>
 
         <div className="mt-4 space-y-2">
-          {whitelistQuery.isLoading ? (
-            <p className="text-sm text-slate-400">Chargement whitelist...</p>
-          ) : null}
+          {whitelistQuery.isLoading ? <InlineLoadingIndicator /> : null}
 
           {(whitelistQuery.data?.guilds.length ?? 0) === 0 &&
           !whitelistQuery.isLoading ? (
-            <p className="text-sm text-slate-400">Aucun serveur whitelist.</p>
+            <p className="text-sm text-slate-400">No whitelisted server.</p>
           ) : null}
 
           {whitelistQuery.data?.guilds.map((guild) => (
@@ -197,7 +196,7 @@ export function WhitelistManager() {
                 }}
                 disabled={removeWhitelistMutation.isPending}
               >
-                Retirer
+                Remove
               </button>
             </div>
           ))}

@@ -240,14 +240,14 @@ export async function GET(request: Request) {
 
     if (!config?.apiKey) {
         return NextResponse.json(
-            { error: "Aucune clé API configurée pour ce serveur." },
+            { error: "No API key configured for this server." },
             { status: 422 },
         );
     }
 
     if (!config.channelId) {
         return NextResponse.json(
-            { error: "Aucun Channel ID configuré pour ce serveur." },
+            { error: "No channel ID configured for this server." },
             { status: 422 },
         );
     }
@@ -285,7 +285,7 @@ export async function GET(request: Request) {
             const body = (await eventRes.text().catch(() => "")).slice(0, 200);
             return NextResponse.json(
                 {
-                    error: `Impossible de charger le détail de l'événement (${eventRes.status})${body ? `: ${body}` : ""}.`,
+                    error: `Unable to load event details (${eventRes.status})${body ? `: ${body}` : ""}.`,
                 },
                 { status: 502 },
             );
@@ -301,7 +301,7 @@ export async function GET(request: Request) {
 
         if (detailChannelId && detailChannelId !== config.channelId) {
             return NextResponse.json(
-                { error: "Cet événement ne correspond pas au channel configuré." },
+                { error: "This event does not match the configured channel." },
                 { status: 400 },
             );
         }

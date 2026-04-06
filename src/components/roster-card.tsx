@@ -24,6 +24,10 @@ import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import {
+  InlineLoadingIndicator,
+  LoadingIndicator,
+} from "@/components/loading-indicator";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,16 +108,16 @@ function normalizeRoleToken(value: string | null) {
 
 function formatRefreshDateTime(value: string | Date | null | undefined) {
   if (!value) {
-    return "Jamais";
+    return "Never";
   }
 
   const parsed = new Date(value);
 
   if (Number.isNaN(parsed.getTime())) {
-    return "Jamais";
+    return "Never";
   }
 
-  return parsed.toLocaleString("fr-FR", {
+  return parsed.toLocaleString("en-US", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -270,19 +274,6 @@ type RoleKey =
   | "bench"
   | null;
 
-const ROLE_CYCLE: RoleKey[] = [
-  null,
-  "tank",
-  "bruiser",
-  "dps",
-  "heal",
-  "debuff",
-  "dex",
-  "late",
-  "tentative",
-  "bench",
-];
-
 const ROLE_META: Record<
   string,
   { label: string; icon: IconDefinition; color: string }
@@ -347,7 +338,7 @@ async function fetchRoster(): Promise<RosterResponse> {
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(err?.error ?? "Impossible de charger le roster.");
+    throw new Error(err?.error ?? "Unable to load roster.");
   }
   return res.json() as Promise<RosterResponse>;
 }
@@ -363,7 +354,7 @@ async function saveGroup(payload: PostGroupPayload): Promise<RosterResponse> {
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(err?.error ?? "Impossible de sauvegarder.");
+    throw new Error(err?.error ?? "Unable to save.");
   }
   return res.json() as Promise<RosterResponse>;
 }
@@ -381,7 +372,7 @@ async function archiveRoster(): Promise<{
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(err?.error ?? "Impossible d'archiver le roster.");
+    throw new Error(err?.error ?? "Unable to archive roster.");
   }
 
   return res.json() as Promise<{ success: boolean; archiveId: string }>;
@@ -397,7 +388,7 @@ async function clearRoster(): Promise<RosterResponse> {
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(err?.error ?? "Impossible de vider le roster.");
+    throw new Error(err?.error ?? "Unable to clear roster.");
   }
 
   return res.json() as Promise<RosterResponse>;
@@ -417,7 +408,7 @@ async function saveSelectedEventId(
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(err?.error ?? "Impossible de sauvegarder l'événement.");
+    throw new Error(err?.error ?? "Unable to save event.");
   }
 
   return res.json() as Promise<RosterResponse>;
@@ -440,9 +431,7 @@ async function fetchRaidHelperEventsWithMode(
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(
-      err?.error ?? "Impossible de charger les événements RaidHelper.",
-    );
+    throw new Error(err?.error ?? "Unable to load RaidHelper events.");
   }
   return res.json() as Promise<RaidHelperEventsResponse>;
 }
@@ -469,9 +458,7 @@ async function fetchRaidHelperParticipantsWithMode(
     const err = (await res.json().catch(() => null)) as {
       error?: string;
     } | null;
-    throw new Error(
-      err?.error ?? "Impossible de charger les participants RaidHelper.",
-    );
+    throw new Error(err?.error ?? "Unable to load RaidHelper participants.");
   }
   return res.json() as Promise<RaidHelperParticipantsResponse>;
 }
@@ -523,15 +510,15 @@ function GroupCard({
       const data = await saveGroup(payload);
       onSaved(data);
       setEditing(false);
-      toast.success(`Nom du groupe ${group.groupNumber} sauvegarde.`);
+      toast.success(`Group name ${group.groupNumber} saved.`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
     } finally {
       setPending(false);
     }
   }
 
-  const displayName = group.name ?? `Groupe ${group.groupNumber}`;
+  const displayName = group.name ?? `Group ${group.groupNumber}`;
 
   return (
     <div className="flex flex-col rounded-xl border border-slate-800 bg-slate-900/80 shadow-md shadow-black/20">
@@ -542,7 +529,7 @@ function GroupCard({
             <input
               value={localName}
               onChange={(e) => setLocalName(e.target.value)}
-              placeholder={`Groupe ${group.groupNumber}`}
+              placeholder={`Group ${group.groupNumber}`}
               className="w-full rounded bg-slate-800 px-2 py-0.5 text-xs font-semibold text-slate-100 outline-none focus:ring-1 focus:ring-sky-500"
             />
           ) : (
@@ -558,7 +545,7 @@ function GroupCard({
                 onClick={confirmEdit}
                 disabled={pending}
                 className="rounded border border-emerald-500/60 px-1.5 py-1 text-emerald-400/70 disabled:opacity-40"
-                aria-label="Valider"
+                aria-label="Confirm"
               >
                 <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />
               </button>
@@ -567,7 +554,7 @@ function GroupCard({
                 onClick={cancelEdit}
                 disabled={pending}
                 className="rounded border border-rose-500/60 px-1.5 py-1 text-rose-400/70 disabled:opacity-40"
-                aria-label="Annuler"
+                aria-label="Cancel"
               >
                 <FontAwesomeIcon icon={faXmark} className="h-2.5 w-2.5" />
               </button>
@@ -577,7 +564,7 @@ function GroupCard({
               type="button"
               onClick={startEdit}
               className="text-[10px] text-slate-500 transition-colors hover:text-slate-300"
-              aria-label="Modifier"
+              aria-label="Edit"
             >
               <FontAwesomeIcon icon={faPencil} className="h-2 w-2" />
             </button>
@@ -588,9 +575,9 @@ function GroupCard({
       {/* Slots */}
       <div className="flex flex-col gap-1 p-2">
         {group.slots.map((slot) => {
-          const displayRole = slot.role as RoleKey;
           const displayPlayer = slot.playerName;
           const isEmpty = !displayPlayer;
+          const displayRole = isEmpty ? null : (slot.role as RoleKey);
           const slotKey = `${group.groupNumber}-${slot.position}`;
           const isPendingDrop = pendingDropTarget === slotKey;
           const isHovered = hoveredSlot === slot.position;
@@ -636,7 +623,7 @@ function GroupCard({
                     participant.name?.trim() || participant.userId?.trim();
 
                   if (!playerName) {
-                    toast.error("Participant invalide pour le drag and drop.");
+                    toast.error("Invalid participant for drag and drop.");
                     return;
                   }
 
@@ -649,7 +636,7 @@ function GroupCard({
                     role: resolvedRole,
                   });
                 } catch {
-                  toast.error("Impossible de lire le participant glisse.");
+                  toast.error("Unable to read dragged participant.");
                 }
               }}
             >
@@ -663,9 +650,9 @@ function GroupCard({
                 }`}
               >
                 {isPendingDrop
-                  ? "Affectation..."
+                  ? "Assigning..."
                   : isEmpty
-                    ? "Vide"
+                    ? "Empty"
                     : displayPlayer}
               </span>
 
@@ -684,16 +671,19 @@ function GroupCard({
                             currentSlot.position === slot.position
                               ? null
                               : currentSlot.playerName,
-                          role: currentSlot.role,
+                          role:
+                            currentSlot.position === slot.position
+                              ? null
+                              : currentSlot.role,
                         })),
                       });
                       onSaved(data);
-                      toast.success("Joueur retire du roster.");
+                      toast.success("Player removed from roster.");
                     } catch (error) {
                       toast.error(
                         error instanceof Error
                           ? error.message
-                          : "Erreur inconnue.",
+                          : "Unknown error.",
                       );
                     } finally {
                       setPending(false);
@@ -701,8 +691,8 @@ function GroupCard({
                   }}
                   disabled={pending || isPendingDrop}
                   className="text-[10px] text-slate-500 transition-colors hover:text-rose-300 disabled:opacity-40"
-                  aria-label="Retirer le joueur"
-                  title="Retirer le joueur"
+                  aria-label="Remove player"
+                  title="Remove player"
                 >
                   <FontAwesomeIcon icon={faXmark} className="h-2.5 w-2.5" />
                 </button>
@@ -753,7 +743,7 @@ export function RosterCard() {
       setSelectedEventId(updated.roster.selectedEventId ?? "");
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Erreur inconnue.");
+      toast.error(error instanceof Error ? error.message : "Unknown error.");
     },
   });
 
@@ -765,20 +755,20 @@ export function RosterCard() {
     mutationFn: clearRoster,
     onSuccess: (updated) => {
       queryClient.setQueryData(["roster"], updated);
-      toast.success("Roster vidé.");
+      toast.success("Roster cleared.");
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
     },
   });
 
   const archiveRosterMutation = useMutation({
     mutationFn: archiveRoster,
     onSuccess: () => {
-      toast.success("Roster archivé avec succès.");
+      toast.success("Roster archived successfully.");
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Erreur inconnue.");
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
     },
   });
 
@@ -800,9 +790,9 @@ export function RosterCard() {
         );
       }
 
-      toast.success("Liste RaidHelper rafraichie.");
+      toast.success("RaidHelper list refreshed.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erreur inconnue.");
+      toast.error(error instanceof Error ? error.message : "Unknown error.");
     } finally {
       setIsRefreshingRaidHelper(false);
     }
@@ -845,7 +835,7 @@ export function RosterCard() {
     );
 
     if (!targetGroup) {
-      toast.error("Groupe introuvable.");
+      toast.error("Group not found.");
       return;
     }
 
@@ -869,28 +859,22 @@ export function RosterCard() {
       });
 
       handleGroupSaved(updated);
-      toast.success(`Joueur affecte au groupe ${input.groupNumber}.`);
+      toast.success(`Player assigned to group ${input.groupNumber}.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erreur inconnue.");
+      toast.error(error instanceof Error ? error.message : "Unknown error.");
     } finally {
       setPendingDropTarget(null);
     }
   }
 
   if (isLoading) {
-    return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 text-sm text-slate-300">
-        Chargement du roster...
-      </div>
-    );
+    return <LoadingIndicator />;
   }
 
   if (isError) {
     return (
       <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-6 text-sm text-red-300">
-        {error instanceof Error
-          ? error.message
-          : "Impossible de charger le roster."}
+        {error instanceof Error ? error.message : "Unable to load roster."}
       </div>
     );
   }
@@ -922,7 +906,7 @@ export function RosterCard() {
 
       const nameA = (a.name ?? "").toLowerCase();
       const nameB = (b.name ?? "").toLowerCase();
-      return nameA.localeCompare(nameB, "fr");
+      return nameA.localeCompare(nameB, "en");
     });
 
   const lastRefreshRaw = selectedEventId
@@ -941,12 +925,12 @@ export function RosterCard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
             <h3 className="text-base font-semibold text-slate-100">
-              Archiver le roster
+              Archive roster
             </h3>
             <p className="mt-2 text-sm text-slate-400">
-              Le roster actuel sera archivé avec tous les joueurs affectés et
-              les groupes configurés. Vous pourrez le consulter dans l'onglet
-              Archives.
+              Current roster will be archived with all assigned players and the
+              configured groups. You will be able to view it in the Archives
+              tab.
             </p>
             <div className="mt-5 flex justify-end gap-3">
               <button
@@ -954,7 +938,7 @@ export function RosterCard() {
                 onClick={() => setShowArchiveConfirm(false)}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-700"
               >
-                Annuler
+                Cancel
               </button>
               <button
                 type="button"
@@ -966,7 +950,7 @@ export function RosterCard() {
                 className="flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
               >
                 <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
-                Archiver
+                Archive
               </button>
             </div>
           </div>
@@ -978,11 +962,11 @@ export function RosterCard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
             <h3 className="text-base font-semibold text-slate-100">
-              Vider le roster
+              Clear roster
             </h3>
             <p className="mt-2 text-sm text-slate-400">
-              Tous les joueurs affectés aux groupes seront retirés. Cette action
-              est irréversible.
+              All players assigned to groups will be removed. This action is
+              irreversible.
             </p>
             <div className="mt-5 flex justify-end gap-3">
               <button
@@ -990,7 +974,7 @@ export function RosterCard() {
                 onClick={() => setShowClearConfirm(false)}
                 className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-700"
               >
-                Annuler
+                Cancel
               </button>
               <button
                 type="button"
@@ -1002,7 +986,7 @@ export function RosterCard() {
                 className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:opacity-50"
               >
                 <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-                Vider
+                Clear
               </button>
             </div>
           </div>
@@ -1017,20 +1001,20 @@ export function RosterCard() {
             onClick={() => setShowArchiveConfirm(true)}
             disabled={archiveRosterMutation.isPending}
             className="flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-400 transition hover:border-sky-500/60 hover:bg-sky-500/20 disabled:opacity-40"
-            title="Archiver le roster actuel"
+            title="Archive current roster"
           >
             <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
-            Archiver
+            Archive
           </button>
           <button
             type="button"
             onClick={() => setShowClearConfirm(true)}
             disabled={clearRosterMutation.isPending}
             className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500/60 hover:bg-red-500/20 disabled:opacity-40"
-            title="Vider le roster"
+            title="Clear roster"
           >
             <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-            Vider
+            Clear
           </button>
         </div>
       </div>
@@ -1044,7 +1028,7 @@ export function RosterCard() {
               className="h-4 w-4 shrink-0 text-sky-400"
             />
             <span className="text-sm font-medium text-slate-200">
-              Événement RaidHelper
+              RaidHelper event
             </span>
           </div>
           <button
@@ -1054,7 +1038,7 @@ export function RosterCard() {
             }}
             disabled={eventsQuery.isFetching || isRefreshingRaidHelper}
             className="rounded border border-slate-700/60 px-1.5 py-1 text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-40"
-            aria-label="Rafraîchir"
+            aria-label="Refresh"
           >
             <FontAwesomeIcon
               icon={faRotateRight}
@@ -1067,15 +1051,15 @@ export function RosterCard() {
           <p className="mt-2 text-xs text-amber-400">
             {eventsQuery.error instanceof Error
               ? eventsQuery.error.message
-              : "Impossible de charger les événements."}
+              : "Unable to load events."}
           </p>
         ) : eventsQuery.isLoading ? (
-          <p className="mt-2 text-xs text-slate-400">
-            Chargement des événements...
-          </p>
+          <div className="mt-2">
+            <InlineLoadingIndicator />
+          </div>
         ) : (eventsQuery.data?.events.length ?? 0) === 0 ? (
           <p className="mt-2 text-xs text-slate-500">
-            Aucun événement trouvé dans ce channel.
+            No event found in this channel.
           </p>
         ) : (
           <select
@@ -1088,10 +1072,10 @@ export function RosterCard() {
             disabled={selectedEventMutation.isPending}
             className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
           >
-            <option value="">-- Sélectionne un événement --</option>
+            <option value="">-- Select an event --</option>
             {eventsQuery.data?.events.map((event) => {
               const date = new Date(event.startTime * 1000);
-              const label = `${date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} — ${event.title}`;
+              const label = `${date.toLocaleDateString("en-US", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} — ${event.title}`;
               return (
                 <option key={event.id} value={event.id}>
                   {label}
@@ -1110,9 +1094,7 @@ export function RosterCard() {
                 : "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
           }`}
         >
-          <span className="font-medium tracking-wide">
-            Dernière synchronisation
-          </span>
+          <span className="font-medium tracking-wide">Last sync</span>
           <span
             className={`${
               lastRefreshRaw === null
@@ -1130,7 +1112,7 @@ export function RosterCard() {
           <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40">
             <div className="border-b border-slate-800 px-3 py-2">
               <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Joueurs a glisser dans les groupes
+                Players to drag into groups
               </h3>
             </div>
 
@@ -1185,18 +1167,18 @@ export function RosterCard() {
                     })()}
 
             {participantsQuery.isLoading ? (
-              <p className="px-3 py-3 text-sm text-slate-400">
-                Chargement des participants...
-              </p>
+              <div className="px-3 py-2">
+                <InlineLoadingIndicator />
+              </div>
             ) : participantsQuery.isError ? (
               <p className="px-3 py-3 text-sm text-amber-400">
                 {participantsQuery.error instanceof Error
                   ? participantsQuery.error.message
-                  : "Impossible de charger les participants."}
+                  : "Unable to load participants."}
               </p>
             ) : (participantsQuery.data?.participants.length ?? 0) === 0 ? (
               <p className="px-3 py-3 text-sm text-slate-500">
-                Aucun participant exploitable trouvé pour cet événement.
+                No usable participant found for this event.
               </p>
             ) : (
               <div className="max-h-80 overflow-auto p-3">
@@ -1206,7 +1188,7 @@ export function RosterCard() {
                       key={`${participant.userId ?? participant.name ?? "participant"}-${index}`}
                       type="button"
                       draggable
-                      title={`${participant.name ?? "Sans nom"}${participant.className ? ` | ${participant.className}` : ""}${participant.specName ? ` | ${participant.specName}` : ""}`}
+                      title={`${participant.name ?? "No name"}${participant.className ? ` | ${participant.className}` : ""}${participant.specName ? ` | ${participant.specName}` : ""}`}
                       onDragStart={(event) => {
                         const payload: DragParticipantPayload = {
                           name: participant.name,
@@ -1228,7 +1210,7 @@ export function RosterCard() {
                         <RoleIcon role={resolveParticipantRole(participant)} />
                       </div>
                       <div className="min-w-0 truncate text-sm font-medium text-slate-100">
-                        {participant.name ?? "Sans nom"}
+                        {participant.name ?? "No name"}
                       </div>
                     </button>
                   ))}

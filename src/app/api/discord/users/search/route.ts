@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,16 @@ const userSearchCache: Map<
 const preferredBotTokenByGuild = new Map<string, string>();
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+type DiscordMember = {
+    roles?: string[];
+    user: {
+        id: string;
+        username: string;
+        global_name: string | null;
+        avatar: string | null;
+    };
+};
 
 function getDiscordBotTokens(): string[] {
     const multi = (process.env.DISCORD_BOT_TOKENS ?? "")
@@ -54,8 +65,16 @@ export async function GET(request: NextRequest) {
 
         const guildId = guilds[0].id;
 
+        // Get guild config to check for Zoo member role
+        const guildConfig = await prisma.guildConfiguration.findUnique({
+            where: { discordGuildId: guildId },
+            select: { zooMemberRoleId: true },
+        });
+
+        const zooRoleId = guildConfig?.zooMemberRoleId;
+
         // Check cache
-        const cacheKey = `${guildId}:${query}`;
+        const cacheKey = `${guildId}:${query}:${zooRoleId || "any"}`;
         const cached = userSearchCache.get(cacheKey);
         if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
             return NextResponse.json(cached.results);
@@ -73,24 +92,46 @@ export async function GET(request: NextRequest) {
             ? [preferred, ...tokens.filter((token) => token !== preferred)]
             : tokens;
 
-        let results = [];
+        let results: Array<{
+            id: string;
+            username: string;
+            displayName: string;
+            avatar: string | null;
+        }> = [];
         let success = false;
 
         for (const botToken of orderedTokens) {
-            const membersRes = await fetch(
-                `https://discord.com/api/v10/guilds/${guildId}/members/search?query=${encodeURIComponent(query)}&limit=25`,
-                {
-                    headers: {
-                        Authorization: `Bot ${botToken}`,
-                    },
-                }
-            );
+            let members: DiscordMember[] = [];
 
-            if (!membersRes.ok) {
-                console.error(
-                    `Discord API error with token ${botToken.slice(0, 10)}...:`,
-                    membersRes.status
+            try {
+                // Always use Discord native search first
+                const membersRes = await fetch(
+                    `https://discord.com/api/v10/guilds/${guildId}/members/search?query=${encodeURIComponent(query)}&limit=100`,
+                    {
+                        headers: {
+                            Authorization: `Bot ${botToken}`,
+                        },
+                    }
                 );
+
+                if (!membersRes.ok) {
+                    console.error(
+                        `Discord API error with token ${botToken.slice(0, 10)}...:`,
+                        membersRes.status
+                    );
+                    continue;
+                }
+
+                members = (await membersRes.json()) as DiscordMember[];
+
+                // If Zoo role is set, filter members by that role
+                if (zooRoleId) {
+                    members = members.filter((m) =>
+                        m.roles && m.roles.includes(zooRoleId)
+                    );
+                }
+            } catch (err) {
+                console.error(`Error searching members:`, err);
                 continue;
             }
 
@@ -98,24 +139,14 @@ export async function GET(request: NextRequest) {
             preferredBotTokenByGuild.set(guildId, botToken);
             success = true;
 
-            const members = await membersRes.json();
-            results = members.map(
-                (member: {
-                    user: {
-                        id: string;
-                        username: string;
-                        global_name: string | null;
-                        avatar: string | null;
-                    };
-                }) => ({
-                    id: member.user.id,
-                    username: member.user.username,
-                    displayName: member.user.global_name || member.user.username,
-                    avatar: member.user.avatar
-                        ? `https://cdn.discordapp.com/avatars/${member.user.id}/${member.user.avatar}.png`
-                        : null,
-                })
-            );
+            results = members.map((member) => ({
+                id: member.user.id,
+                username: member.user.username,
+                displayName: member.user.global_name || member.user.username,
+                avatar: member.user.avatar
+                    ? `https://cdn.discordapp.com/avatars/${member.user.id}/${member.user.avatar}.png`
+                    : null,
+            }));
 
             break;
         }
