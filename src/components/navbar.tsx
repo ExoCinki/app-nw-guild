@@ -60,7 +60,7 @@ export function Navbar() {
               aria-label="NW Guild Manager home"
             >
               <Image
-                src="/favicon-32x32.png"
+                src="/android-chrome-192x192.png"
                 alt="NW Guild Manager"
                 width={64}
                 height={64}
