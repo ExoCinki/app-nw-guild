@@ -400,6 +400,48 @@ export default function PayoutClient() {
     },
   });
 
+  // Toggle paid — mutation séparée pour que son isPending n'affecte pas les counters
+  const togglePaidMutation = useMutation({
+    mutationFn: async (data: { entryId: string; isPaid: boolean }) => {
+      const res = await fetch("/api/payout/entries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryId: data.entryId,
+          updates: { isPaid: data.isPaid },
+        }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to update entry");
+      }
+      return res.json();
+    },
+    onMutate: async (data) => {
+      await queryClient.cancelQueries({ queryKey: ["payout-sessions"] });
+      const previousSessions = queryClient.getQueryData<PayoutSession[]>([
+        "payout-sessions",
+      ]);
+      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+        old.map((session) => ({
+          ...session,
+          entries: session.entries.map((entry) =>
+            entry.id === data.entryId
+              ? { ...entry, isPaid: data.isPaid }
+              : entry,
+          ),
+        })),
+      );
+      return { previousSessions };
+    },
+    onError: (error: Error, _, context) => {
+      if (context?.previousSessions) {
+        queryClient.setQueryData(["payout-sessions"], context.previousSessions);
+      }
+      toast.error(`Error: ${error.message}`);
+    },
+  });
+
   useEffect(() => {
     updateEntryMutateRef.current = updateEntryMutation.mutate;
   }, [updateEntryMutation.mutate]);
@@ -1088,14 +1130,12 @@ export default function PayoutClient() {
                         <td className="text-center px-3 py-2">
                           <LoadingButton
                             onClick={() =>
-                              updateEntryMutation.mutate({
+                              togglePaidMutation.mutate({
                                 entryId: entry.id,
-                                updates: {
-                                  isPaid: !entry.isPaid,
-                                } as Partial<PayoutEntry>,
+                                isPaid: !entry.isPaid,
                               })
                             }
-                            isLoading={updateEntryMutation.isPending}
+                            isLoading={togglePaidMutation.isPending}
                             className={`px-2 py-1 rounded transition-colors ${
                               entry.isPaid
                                 ? "bg-green-700 text-white"
