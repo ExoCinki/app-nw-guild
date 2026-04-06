@@ -62,8 +62,8 @@ export function Navbar() {
               <Image
                 src="/favicon-32x32.png"
                 alt="NW Guild Manager"
-                width={24}
-                height={24}
+                width={64}
+                height={64}
                 className="rounded-sm"
               />
             </Link>
