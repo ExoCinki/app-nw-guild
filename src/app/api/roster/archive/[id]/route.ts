@@ -19,11 +19,16 @@ export async function GET(
     const { id } = await params;
 
     // Verify user can access this guild
-    const manageableGuilds = await getManagedWhitelistedGuilds(session.user.email);
+    const manageableGuildsResult = await getManagedWhitelistedGuilds(session.user.email);
 
-    if (!manageableGuilds) {
-        return NextResponse.json({ error: "No Discord token found" }, { status: 401 });
+    if (!manageableGuildsResult.ok) {
+        return NextResponse.json(
+            { error: manageableGuildsResult.error },
+            { status: manageableGuildsResult.status },
+        );
     }
+
+    const manageableGuilds = manageableGuildsResult.guilds;
 
     // Get archive
     const archive = await prisma.rosterArchive.findUnique({

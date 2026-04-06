@@ -51,8 +51,16 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
+        const guildsResult = await getManagedWhitelistedGuilds(session.user.email);
+        if (!guildsResult.ok) {
+            return NextResponse.json(
+                { error: guildsResult.error },
+                { status: guildsResult.status },
+            );
+        }
+
+        const guilds = guildsResult.guilds;
+        if (guilds.length === 0) {
             return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
         }
 

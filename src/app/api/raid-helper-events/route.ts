@@ -203,11 +203,12 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "No guild selected" }, { status: 400 });
     }
 
-    const manageableGuilds = await getManagedWhitelistedGuilds(session.user.email);
+    const manageableGuildsResult = await getManagedWhitelistedGuilds(session.user.email);
+    const manageableGuilds = manageableGuildsResult.ok
+        ? manageableGuildsResult.guilds
+        : null;
 
-    let hasAccess = Boolean(
-        manageableGuilds?.some((g) => g.id === guildId),
-    );
+    let hasAccess = Boolean(manageableGuilds?.some((g) => g.id === guildId));
 
     // Fallback: si le token Discord est indisponible, on autorise la guilde
     // selectionnee si elle est dans la whitelist (couvre events ET participants).
@@ -226,7 +227,14 @@ export async function GET(request: Request) {
 
     if (!hasAccess) {
         if (!manageableGuilds) {
-            return NextResponse.json({ error: "No Discord token found" }, { status: 401 });
+            return NextResponse.json(
+                {
+                    error: manageableGuildsResult.ok
+                        ? "No managed guilds"
+                        : manageableGuildsResult.error,
+                },
+                { status: manageableGuildsResult.ok ? 403 : manageableGuildsResult.status },
+            );
         }
 
         return NextResponse.json(

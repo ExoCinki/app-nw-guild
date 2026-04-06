@@ -122,11 +122,16 @@ async function resolveGuildForUser(email: string, guildIdFromQuery: string | nul
         return { error: "User not found", status: 404 as const };
     }
 
-    const manageableGuilds = await getManagedWhitelistedGuilds(email);
+    const manageableGuildsResult = await getManagedWhitelistedGuilds(email);
 
-    if (!manageableGuilds) {
-        return { error: "No Discord token found", status: 401 as const };
+    if (!manageableGuildsResult.ok) {
+        return {
+            error: manageableGuildsResult.error,
+            status: manageableGuildsResult.status,
+        };
     }
+
+    const manageableGuilds = manageableGuildsResult.guilds;
 
     let guildId = guildIdFromQuery;
 

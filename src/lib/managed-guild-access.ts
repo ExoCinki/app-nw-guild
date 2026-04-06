@@ -6,7 +6,7 @@ export async function resolveManagedGuildForUser(
     guildIdFromRequest?: string | null,
 ): Promise<
     | { userId: string; guildId: string }
-    | { error: string; status: 400 | 401 | 403 | 404 }
+    | { error: string; status: 400 | 401 | 403 | 404 | 503 }
 > {
     const user = await prisma.user.findUnique({
         where: { email },
@@ -17,11 +17,13 @@ export async function resolveManagedGuildForUser(
         return { error: "User not found", status: 404 };
     }
 
-    const manageableGuilds = await getManagedWhitelistedGuilds(email);
+    const manageableGuildsResult = await getManagedWhitelistedGuilds(email);
 
-    if (!manageableGuilds) {
-        return { error: "No Discord token found", status: 401 };
+    if (!manageableGuildsResult.ok) {
+        return { error: manageableGuildsResult.error, status: manageableGuildsResult.status };
     }
+
+    const manageableGuilds = manageableGuildsResult.guilds;
 
     let guildId = guildIdFromRequest ?? null;
 

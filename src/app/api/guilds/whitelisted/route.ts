@@ -15,15 +15,15 @@ export async function GET() {
     try {
         const result = await getManagedWhitelistedGuilds(session.user.email);
 
-        if (!result) {
+        if (!result.ok) {
             return NextResponse.json(
-                { error: "No Discord token found" },
-                { status: 401 },
+                { error: result.error },
+                { status: result.status },
             );
         }
 
         return NextResponse.json({
-            guilds: result,
+            guilds: result.guilds,
         });
     } catch (error) {
         console.error("Error fetching whitelisted guilds:", error);

@@ -47,10 +47,10 @@ export async function GET() {
     });
 
     try {
-        const manageableGuilds = await getManagedWhitelistedGuilds(session.user.email);
+        const manageableGuildsResult = await getManagedWhitelistedGuilds(session.user.email);
 
-        if (manageableGuilds) {
-            const selectedGuild = manageableGuilds.find(
+        if (manageableGuildsResult.ok) {
+            const selectedGuild = manageableGuildsResult.guilds.find(
                 (guild) => guild.id === selected.discordGuildId,
             );
 
@@ -121,23 +121,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    let manageableGuilds: Awaited<ReturnType<typeof getManagedWhitelistedGuilds>>;
+    const manageableGuildsResult = await getManagedWhitelistedGuilds(session.user.email);
 
-    try {
-        manageableGuilds = await getManagedWhitelistedGuilds(session.user.email);
-    } catch {
+    if (!manageableGuildsResult.ok) {
         return NextResponse.json(
-            { error: "Discord API unavailable, retry in a few seconds" },
-            { status: 503 },
+            { error: manageableGuildsResult.error },
+            { status: manageableGuildsResult.status },
         );
     }
 
-    if (!manageableGuilds) {
-        return NextResponse.json(
-            { error: "No Discord token found" },
-            { status: 401 },
-        );
-    }
+    const manageableGuilds = manageableGuildsResult.guilds;
 
     const selectedManagedGuild = manageableGuilds.find((guild) => guild.id === guildId);
     const canManageGuild = Boolean(selectedManagedGuild);

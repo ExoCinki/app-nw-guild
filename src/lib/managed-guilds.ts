@@ -9,6 +9,55 @@ type ManagedGuild = {
     iconUrl: string | null;
 };
 
+export type ManagedWhitelistedGuildsResult =
+    | { ok: true; guilds: ManagedGuild[] }
+    | { ok: false; status: 401 | 503; error: string };
+
+type ManagedGuildsCacheEntry = {
+    guilds: ManagedGuild[];
+    expiresAt: number;
+};
+
+type ManagedGuildsCacheStore = Map<string, ManagedGuildsCacheEntry>;
+
+const MANAGED_GUILDS_CACHE_TTL_MS = 60_000;
+
+declare global {
+    var __managedGuildsCache: ManagedGuildsCacheStore | undefined;
+}
+
+function getManagedGuildsCache(): ManagedGuildsCacheStore {
+    if (!globalThis.__managedGuildsCache) {
+        globalThis.__managedGuildsCache = new Map<string, ManagedGuildsCacheEntry>();
+    }
+
+    return globalThis.__managedGuildsCache;
+}
+
+function getCachedManagedGuilds(userEmail: string): ManagedGuild[] | null {
+    const cache = getManagedGuildsCache();
+    const entry = cache.get(userEmail);
+
+    if (!entry) {
+        return null;
+    }
+
+    if (entry.expiresAt <= Date.now()) {
+        cache.delete(userEmail);
+        return null;
+    }
+
+    return entry.guilds;
+}
+
+function setCachedManagedGuilds(userEmail: string, guilds: ManagedGuild[]) {
+    const cache = getManagedGuildsCache();
+    cache.set(userEmail, {
+        guilds,
+        expiresAt: Date.now() + MANAGED_GUILDS_CACHE_TTL_MS,
+    });
+}
+
 type DiscordGuild = {
     id: string;
     name: string;
@@ -16,19 +65,31 @@ type DiscordGuild = {
     permissions: string | number;
 };
 
-async function fetchDiscordGuilds(accessToken: string): Promise<DiscordGuild[] | null> {
-    const discordRes = await fetch("https://discord.com/api/v10/users/@me/guilds", {
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-        },
-        cache: "no-store",
-    });
+type DiscordGuildsFetchResult = {
+    guilds: DiscordGuild[] | null;
+    status: number;
+};
 
-    if (!discordRes.ok) {
-        return null;
+async function fetchDiscordGuilds(accessToken: string): Promise<DiscordGuildsFetchResult> {
+    try {
+        const discordRes = await fetch("https://discord.com/api/v10/users/@me/guilds", {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+        });
+
+        if (!discordRes.ok) {
+            return { guilds: null, status: discordRes.status };
+        }
+
+        return {
+            guilds: (await discordRes.json()) as DiscordGuild[],
+            status: discordRes.status,
+        };
+    } catch {
+        return { guilds: null, status: 0 };
     }
-
-    return (await discordRes.json()) as DiscordGuild[];
 }
 
 async function refreshDiscordAccessToken(
@@ -87,7 +148,12 @@ async function refreshDiscordAccessToken(
 
 export async function getManagedWhitelistedGuilds(
     userEmail: string,
-): Promise<ManagedGuild[] | null> {
+): Promise<ManagedWhitelistedGuildsResult> {
+    const cachedGuilds = getCachedManagedGuilds(userEmail);
+    if (cachedGuilds) {
+        return { ok: true, guilds: cachedGuilds };
+    }
+
     const account = await prisma.account.findFirst({
         where: {
             user: { email: userEmail },
@@ -101,13 +167,16 @@ export async function getManagedWhitelistedGuilds(
     });
 
     if (!account) {
-        return null;
+        return { ok: false, status: 401, error: "No Discord token found" };
     }
 
     let guilds: DiscordGuild[] | null = null;
+    let discordStatus: number | null = null;
 
     if (account.access_token) {
-        guilds = await fetchDiscordGuilds(account.access_token);
+        const fetched = await fetchDiscordGuilds(account.access_token);
+        guilds = fetched.guilds;
+        discordStatus = fetched.status;
     }
 
     // Si le token est absent/expire, tente un refresh OAuth puis reessaie.
@@ -124,12 +193,26 @@ export async function getManagedWhitelistedGuilds(
                 },
             });
 
-            guilds = await fetchDiscordGuilds(refreshed.accessToken);
+            const fetched = await fetchDiscordGuilds(refreshed.accessToken);
+            guilds = fetched.guilds;
+            discordStatus = fetched.status;
         }
     }
 
     if (!guilds) {
-        return null;
+        if (
+            discordStatus === 429 ||
+            discordStatus === 0 ||
+            (discordStatus !== null && discordStatus >= 500)
+        ) {
+            return {
+                ok: false,
+                status: 503,
+                error: "Discord API unavailable or rate limited, retry in a few seconds",
+            };
+        }
+
+        return { ok: false, status: 401, error: "No Discord token found" };
     }
 
     const guildMap = new Map(guilds.map((guild) => [guild.id, guild]));
@@ -153,7 +236,7 @@ export async function getManagedWhitelistedGuilds(
         },
     });
 
-    return whitelistedGuilds
+    const managedGuilds = whitelistedGuilds
         .filter((guild: { discordGuildId: string; name: string | null }) =>
             adminGuildIds.has(guild.discordGuildId),
         )
@@ -164,4 +247,8 @@ export async function getManagedWhitelistedGuilds(
                 ? `https://cdn.discordapp.com/icons/${guild.discordGuildId}/${guildMap.get(guild.discordGuildId)?.icon}.png?size=64`
                 : null,
         }));
+
+    setCachedManagedGuilds(userEmail, managedGuilds);
+
+    return { ok: true, guilds: managedGuilds };
 }

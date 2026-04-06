@@ -22,11 +22,16 @@ export async function GET() {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const manageableGuilds = await getManagedWhitelistedGuilds(session.user.email);
+    const manageableGuildsResult = await getManagedWhitelistedGuilds(session.user.email);
 
-    if (!manageableGuilds) {
-        return NextResponse.json({ error: "No Discord token found" }, { status: 401 });
+    if (!manageableGuildsResult.ok) {
+        return NextResponse.json(
+            { error: manageableGuildsResult.error },
+            { status: manageableGuildsResult.status },
+        );
     }
+
+    const manageableGuilds = manageableGuildsResult.guilds;
 
     const manageableGuildIds = new Set(manageableGuilds.map((guild) => guild.id));
 
