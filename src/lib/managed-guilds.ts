@@ -154,8 +154,10 @@ export async function getManagedWhitelistedGuilds(
     });
 
     return whitelistedGuilds
-        .filter((guild) => adminGuildIds.has(guild.discordGuildId))
-        .map((guild) => ({
+        .filter((guild: { discordGuildId: string; name: string | null }) =>
+            adminGuildIds.has(guild.discordGuildId),
+        )
+        .map((guild: { discordGuildId: string; name: string | null }) => ({
             id: guild.discordGuildId,
             name: guild.name ?? guildMap.get(guild.discordGuildId)?.name ?? null,
             iconUrl: guildMap.get(guild.discordGuildId)?.icon

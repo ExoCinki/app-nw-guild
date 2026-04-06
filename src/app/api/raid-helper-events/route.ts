@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+
+type RosterUpsertCreateInput = Parameters<typeof prisma.roster.upsert>[0]["create"];
+type ParticipantsCacheInput = RosterUpsertCreateInput["raidHelperParticipantsCache"];
+type EventsCacheInput = RosterUpsertCreateInput["raidHelperEventsCache"];
 
 export const dynamic = "force-dynamic";
 
@@ -336,13 +339,13 @@ export async function GET(request: Request) {
         const existingParticipantsCache =
             rosterCache?.raidHelperParticipantsCache &&
                 typeof rosterCache.raidHelperParticipantsCache === "object"
-                ? (rosterCache.raidHelperParticipantsCache as Prisma.JsonObject)
+                ? (rosterCache.raidHelperParticipantsCache as Record<string, unknown>)
                 : {};
 
-        const mergedParticipantsCache: Prisma.InputJsonValue = {
+        const mergedParticipantsCache = {
             ...existingParticipantsCache,
             [eventId]: participants,
-        };
+        } as unknown as ParticipantsCacheInput;
 
         const participantsCachedAt = new Date();
 
@@ -412,7 +415,7 @@ export async function GET(request: Request) {
     // Sort by startTime ascending
     filtered.sort((a, b) => a.startTime - b.startTime);
 
-    const filteredEventsCache = filtered as unknown as Prisma.InputJsonValue;
+    const filteredEventsCache = filtered as unknown as EventsCacheInput;
 
     const eventsCachedAt = new Date();
 

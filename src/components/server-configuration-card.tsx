@@ -94,6 +94,12 @@ async function saveServerConfiguration(
   return response.json() as Promise<ServerConfigurationResponse>;
 }
 
+function maskApiKey(key: string): string {
+  if (!key) return "";
+  if (key.length <= 12) return "*".repeat(key.length);
+  return key.slice(0, 8) + "..." + key.slice(-4);
+}
+
 function EditButtons({
   isEditing,
   isPending,
@@ -349,7 +355,7 @@ export function ServerConfigurationCard() {
             </label>
             <div className="flex items-center gap-2">
               <input
-                value={apiKey}
+                value={editingField === "apiKey" ? apiKey : maskApiKey(apiKey)}
                 onChange={(event) => setApiKey(event.target.value)}
                 placeholder="ex: sk_live_xxx"
                 disabled={

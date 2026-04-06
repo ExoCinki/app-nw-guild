@@ -84,7 +84,11 @@ export async function GET() {
         },
     });
 
-    const whitelistSet = new Set(whitelistedGuilds.map((guild) => guild.discordGuildId));
+    const whitelistSet = new Set(
+        whitelistedGuilds.map(
+            (guild: { discordGuildId: string }) => guild.discordGuildId,
+        ),
+    );
 
     if (whitelistSet.size === 0) {
         return NextResponse.json({ guilds: [] });

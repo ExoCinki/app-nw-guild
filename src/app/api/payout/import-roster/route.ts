@@ -43,8 +43,8 @@ export async function POST(request: NextRequest) {
             { name: string; displayName: string; id: string }
         >();
 
-        roster.groups.forEach((group) => {
-            group.slots.forEach((slot) => {
+        roster.groups.forEach((group: { slots: Array<{ playerName: string | null }> }) => {
+            group.slots.forEach((slot: { playerName: string | null }) => {
                 if (slot.playerName) {
                     if (!playerMap.has(slot.playerName)) {
                         playerMap.set(slot.playerName, {

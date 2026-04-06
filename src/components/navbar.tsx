@@ -78,26 +78,18 @@ export function Navbar() {
             ) : null}
             {session?.user ? (
               <Link
-                href="/archives"
-                className={`text-sm font-medium transition ${isActive("/archives")}`}
-              >
-                Archives
-              </Link>
-            ) : null}
-            {session?.user ? (
-              <Link
                 href="/payout"
                 className={`text-sm font-medium transition ${isActive("/payout")}`}
               >
                 Payout
               </Link>
             ) : null}
-            {isOwner ? (
+            {session?.user ? (
               <Link
-                href="/admin"
-                className={`text-sm font-medium transition ${isActive("/admin")}`}
+                href="/archives"
+                className={`text-sm font-medium transition ${isActive("/archives")}`}
               >
-                Administration
+                Archives
               </Link>
             ) : null}
           </div>
@@ -142,6 +134,15 @@ export function Navbar() {
                   {session.user.displayName ?? session.user.name ?? "User"}
                 </span>
               </div>
+
+              {isOwner ? (
+                <Link
+                  href="/admin"
+                  className={`text-sm font-medium transition ${isActive("/admin")}`}
+                >
+                  Administration
+                </Link>
+              ) : null}
             </div>
           ) : (
             <div className="text-xs text-slate-400">Not signed in</div>
