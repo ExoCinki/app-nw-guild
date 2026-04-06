@@ -53,7 +53,20 @@ export function Navbar() {
     <nav className="border-b border-slate-800 bg-slate-900/80 backdrop-blur">
       <div className="mx-auto max-w-7xl px-4 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex gap-8">
+          <div className="flex items-center gap-8">
+            <Link
+              href="/"
+              className="flex items-center"
+              aria-label="NW Guild Manager home"
+            >
+              <Image
+                src="/favicon-32x32.png"
+                alt="NW Guild Manager"
+                width={24}
+                height={24}
+                className="rounded-sm"
+              />
+            </Link>
             <Link
               href="/"
               className={`text-sm font-medium transition ${isActive("/")}`}
