@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NW Guild Auth",
-  description: "Next.js + Discord OAuth + Prisma + React Query",
+  title: "NW Guild Manager",
+  description:
+    "Manage ur roster, and payouts for New World Guilds. Made by a guild, for guilds.",
 };
 
 export default function RootLayout({
