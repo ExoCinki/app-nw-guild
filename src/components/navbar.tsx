@@ -84,6 +84,14 @@ export function Navbar() {
                 Archives
               </Link>
             ) : null}
+            {session?.user ? (
+              <Link
+                href="/payout"
+                className={`text-sm font-medium transition ${isActive("/payout")}`}
+              >
+                Payout
+              </Link>
+            ) : null}
             {isOwner ? (
               <Link
                 href="/admin"

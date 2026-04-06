@@ -141,3 +141,37 @@ model RosterArchive {
 
   @@index([discordGuildId, archivedAt(sort: Desc)])
 }
+
+model PayoutSession {
+  id             String          @id @default(cuid())
+  discordGuildId String
+  goldPool       Float           @default(0)
+  status         String          @default("DRAFT")
+  entries        PayoutEntry[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([discordGuildId])
+}
+
+model PayoutEntry {
+  id             String          @id @default(cuid())
+  sessionId      String
+  discordGuildId String
+  discordUserId  String
+  username       String
+  displayName    String?
+  wars           Int             @default(0)
+  races          Int             @default(0)
+  reviews        Int             @default(0)
+  bonus          Int             @default(0)
+  invasions      Int             @default(0)
+  vods           Int             @default(0)
+  isPaid         Boolean         @default(false)
+  session        PayoutSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([sessionId, discordUserId])
+  @@index([discordGuildId])
+}
