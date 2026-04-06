@@ -62,14 +62,6 @@ export function Navbar() {
             </Link>
             {session?.user ? (
               <Link
-                href="/configuration"
-                className={`text-sm font-medium transition ${isActive("/configuration")}`}
-              >
-                Configuration
-              </Link>
-            ) : null}
-            {session?.user ? (
-              <Link
                 href="/roster"
                 className={`text-sm font-medium transition ${isActive("/roster")}`}
               >
@@ -133,6 +125,13 @@ export function Navbar() {
                 <span className="text-sm font-medium text-slate-200">
                   {session.user.displayName ?? session.user.name ?? "User"}
                 </span>
+
+                <Link
+                  href="/configuration"
+                  className={`text-sm font-medium transition ${isActive("/configuration")}`}
+                >
+                  Configuration
+                </Link>
               </div>
 
               {isOwner ? (

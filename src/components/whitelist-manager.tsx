@@ -157,7 +157,13 @@ export function WhitelistManager() {
               });
             }}
           >
-            Add to whitelist
+            {addWhitelistMutation.isPending ? (
+              <>
+                <InlineLoadingIndicator /> Adding...
+              </>
+            ) : (
+              "Add to whitelist"
+            )}
           </button>
         </div>
       </div>
@@ -190,13 +196,19 @@ export function WhitelistManager() {
               </div>
               <button
                 type="button"
-                className="ml-2 rounded-md border border-rose-500 px-3 py-1 text-xs font-medium text-rose-300 transition hover:bg-rose-500/10"
+                className="ml-2 rounded-md border border-rose-500 px-3 py-1 text-xs font-medium text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50 inline-flex items-center gap-1"
                 onClick={() => {
                   removeWhitelistMutation.mutate(guild.discordGuildId);
                 }}
                 disabled={removeWhitelistMutation.isPending}
               >
-                Remove
+                {removeWhitelistMutation.isPending ? (
+                  <>
+                    <InlineLoadingIndicator /> Removing...
+                  </>
+                ) : (
+                  "Remove"
+                )}
               </button>
             </div>
           ))}

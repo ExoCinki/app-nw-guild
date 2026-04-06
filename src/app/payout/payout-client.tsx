@@ -10,7 +10,9 @@ import {
   faCheck,
   faXmark,
   faDownload,
+  faUsers,
 } from "@fortawesome/free-solid-svg-icons";
+import { LoadingButton } from "@/components/loading-button";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 interface PayoutSession {
@@ -48,12 +50,19 @@ interface DiscordUser {
   avatar: string | null;
 }
 
+const PLAYERS_PER_PAGE = 25;
+
 export default function PayoutClient() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null,
   );
-  const [goldPoolInput, setGoldPoolInput] = useState<string>("");
+  const [selectedGoldPoolInput, setSelectedGoldPoolInput] =
+    useState<string>("0");
+  const [deleteSessionModalOpen, setDeleteSessionModalOpen] =
+    useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [playerSearchQuery, setPlayerSearchQuery] = useState<string>("");
+  const [currentPlayersPage, setCurrentPlayersPage] = useState<number>(1);
 
   // Local state for counter inputs with debounce
   const [counterEdits, setCounterEdits] = useState<
@@ -139,11 +148,11 @@ export default function PayoutClient() {
 
   // Create session
   const createSessionMutation = useMutation({
-    mutationFn: async (goldPool: number) => {
+    mutationFn: async () => {
       const res = await fetch("/api/payout/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goldPool }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error("Failed to create session");
       return res.json();
@@ -151,10 +160,70 @@ export default function PayoutClient() {
     onSuccess: (newSession) => {
       queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
       setSelectedSessionId(newSession.id);
-      setGoldPoolInput("");
       toast.success("Session created");
     },
     onError: () => toast.error("Error while creating session"),
+  });
+
+  // Update selected session settings (gold pool / status)
+  const updateSessionMutation = useMutation({
+    mutationFn: async (data: {
+      sessionId: string;
+      updates: {
+        goldPool?: number;
+        status?: string;
+      };
+    }) => {
+      const res = await fetch(`/api/payout/sessions/${data.sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data.updates),
+      });
+
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Failed to update session");
+      }
+
+      return res.json() as Promise<PayoutSession>;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+        old.map((session) => (session.id === updated.id ? updated : session)),
+      );
+      toast.success("Session updated");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/payout/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Failed to delete session");
+      }
+
+      return res.json() as Promise<{ success: boolean }>;
+    },
+    onSuccess: (_, deletedSessionId) => {
+      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+        old.filter((session) => session.id !== deletedSessionId),
+      );
+      if (selectedSessionId === deletedSessionId) {
+        setSelectedSessionId(null);
+      }
+      setDeleteSessionModalOpen(false);
+      toast.success("Session deleted");
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   // Add entry
@@ -297,8 +366,51 @@ export default function PayoutClient() {
     onError: () => toast.error("Error while importing"),
   });
 
+  // Import all Discord members with configured Zoo role
+  const importZooRoleMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedSessionId) throw new Error("No session selected");
+      const res = await fetch("/api/payout/import-zoo-role", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: selectedSessionId }),
+      });
+
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Failed to import Zoo members");
+      }
+
+      return res.json() as Promise<{ imported: number; matched: number }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+      toast.success(
+        `${data.imported} player(s) imported from Zoo role (${data.matched} matched).`,
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   // Get selected session details
   const selectedSession = sessions.find((s) => s.id === selectedSessionId);
+
+  // Sync gold pool input with selected session
+
+  useEffect(() => {
+    if (selectedSession) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedGoldPoolInput(String(selectedSession.goldPool));
+    }
+  }, [selectedSession]);
+
+  // Reset pagination when session changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentPlayersPage(1);
+  }, [selectedSessionId]);
 
   // Calculate totals
   const calculations = useMemo(() => {
@@ -336,6 +448,30 @@ export default function PayoutClient() {
     };
   }, [selectedSession, guildConfig]);
 
+  // Filter entries by search query
+  const filteredEntries = useMemo(() => {
+    if (!calculations) return [];
+    if (!playerSearchQuery.trim()) return calculations.entries;
+
+    const query = playerSearchQuery.toLowerCase();
+    return calculations.entries.filter((entry) => {
+      const playerName = (entry.displayName || entry.username).toLowerCase();
+      return playerName.includes(query);
+    });
+  }, [calculations, playerSearchQuery]);
+
+  const totalFilteredPlayers = filteredEntries.length;
+  const totalPlayersPages = Math.max(
+    1,
+    Math.ceil(totalFilteredPlayers / PLAYERS_PER_PAGE),
+  );
+
+  const paginatedEntries = useMemo(() => {
+    const start = (currentPlayersPage - 1) * PLAYERS_PER_PAGE;
+    const end = start + PLAYERS_PER_PAGE;
+    return filteredEntries.slice(start, end);
+  }, [filteredEntries, currentPlayersPage]);
+
   if (loadingSessions) {
     return <LoadingIndicator />;
   }
@@ -352,45 +488,50 @@ export default function PayoutClient() {
 
             {/* Create New Session */}
             <div className="space-y-2 mb-4 p-4 bg-slate-900 rounded border border-slate-700">
-              <input
-                type="number"
-                placeholder="Gold to distribute"
-                value={goldPoolInput}
-                onChange={(e) => setGoldPoolInput(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-100"
-              />
-              <button
-                onClick={() =>
-                  createSessionMutation.mutate(parseFloat(goldPoolInput) || 0)
-                }
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded"
+              <LoadingButton
+                onClick={() => createSessionMutation.mutate()}
+                isLoading={createSessionMutation.isPending}
+                loadingText="Creating..."
+                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:cursor-not-allowed"
               >
                 <FontAwesomeIcon icon={faPlus} /> New session
-              </button>
+              </LoadingButton>
             </div>
 
             {/* Sessions List */}
             <div className="space-y-2">
               {sessions.map((session) => (
-                <button
-                  key={session.id}
-                  onClick={() => setSelectedSessionId(session.id)}
-                  className={`w-full text-left px-4 py-3 rounded border transition-colors ${
-                    selectedSessionId === session.id
-                      ? "bg-blue-700 border-blue-500"
-                      : "bg-slate-800 border-slate-700 hover:bg-slate-700"
-                  }`}
-                >
-                  <div className="text-sm font-mono">
-                    {new Date(session.createdAt).toLocaleDateString("en-US")}
-                  </div>
-                  <div className="text-lg font-semibold">
-                    {session.goldPool.toFixed(0)} or
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {session.entries.length} players
-                  </div>
-                </button>
+                <div key={session.id} className="flex gap-2 items-center">
+                  <button
+                    onClick={() => setSelectedSessionId(session.id)}
+                    className={`flex-1 text-left px-4 py-3 rounded border transition-colors ${
+                      selectedSessionId === session.id
+                        ? "bg-blue-700 border-blue-500"
+                        : "bg-slate-800 border-slate-700 hover:bg-slate-700"
+                    }`}
+                  >
+                    <div className="text-sm font-mono">
+                      {new Date(session.createdAt).toLocaleDateString("en-US")}
+                    </div>
+                    <div className="text-lg font-semibold">
+                      {session.goldPool.toFixed(0)} or
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {session.entries.length} players
+                    </div>
+                  </button>
+                  {selectedSessionId === session.id && (
+                    <LoadingButton
+                      onClick={() => setDeleteSessionModalOpen(true)}
+                      isLoading={deleteSessionMutation.isPending}
+                      className="px-3 py-3 rounded bg-red-700 hover:bg-red-800 flex items-center"
+                      title="Delete payout"
+                      aria-label="Delete payout"
+                    >
+                      <FontAwesomeIcon icon={faTrash} />
+                    </LoadingButton>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -398,32 +539,40 @@ export default function PayoutClient() {
 
         {/* Session Detail */}
         {selectedSession && calculations ? (
-          <div className="lg:col-span-2 space-y-6">
+          <div key={selectedSessionId} className="lg:col-span-2 space-y-6">
             {/* Gold Pool Editor */}
             <div className="p-4 bg-slate-900 rounded border border-slate-700">
               <h3 className="font-semibold mb-3">Settings</h3>
               <label className="block text-sm mb-2">Gold to distribute:</label>
-              <input
-                type="number"
-                value={selectedSession.goldPool}
-                onChange={() => {
-                  // Update session gold pool
-                }}
-                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-100 mb-4"
-              />
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="bg-slate-800 px-3 py-2 rounded">
-                  <div className="text-slate-400">Total points</div>
-                  <div className="text-lg font-semibold">
-                    {calculations.totalPoints}
-                  </div>
-                </div>
-                <div className="bg-slate-800 px-3 py-2 rounded">
-                  <div className="text-slate-400">Gold per point</div>
-                  <div className="text-lg font-semibold">
-                    {calculations.goldPerPoint.toFixed(2)}
-                  </div>
-                </div>
+              <div className="mb-4 flex gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={selectedGoldPoolInput}
+                  onChange={(e) => setSelectedGoldPoolInput(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-100"
+                />
+                <LoadingButton
+                  type="button"
+                  onClick={() => {
+                    if (!selectedSessionId) return;
+                    updateSessionMutation.mutate({
+                      sessionId: selectedSessionId,
+                      updates: {
+                        goldPool: Math.max(
+                          0,
+                          Number.parseFloat(selectedGoldPoolInput) || 0,
+                        ),
+                      },
+                    });
+                  }}
+                  isLoading={updateSessionMutation.isPending}
+                  className="px-3 py-2 rounded bg-blue-600 hover:bg-blue-700"
+                  title="Save payout"
+                  aria-label="Save payout"
+                >
+                  <FontAwesomeIcon icon={faCheck} />
+                </LoadingButton>
               </div>
             </div>
 
@@ -431,13 +580,26 @@ export default function PayoutClient() {
             <div className="p-4 bg-slate-900 rounded border border-slate-700">
               <h3 className="font-semibold mb-3">Add players</h3>
               <div className="space-y-2">
-                <button
-                  onClick={() => importRosterMutation.mutate()}
-                  disabled={importRosterMutation.isPending}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-1 bg-green-700 hover:bg-green-800 rounded text-xs disabled:opacity-50"
-                >
-                  <FontAwesomeIcon icon={faDownload} /> Import from roster
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <LoadingButton
+                    onClick={() => importRosterMutation.mutate()}
+                    isLoading={importRosterMutation.isPending}
+                    loadingText="Importing..."
+                    className="w-full px-3 py-1 bg-green-700 hover:bg-green-800 rounded text-xs"
+                  >
+                    <FontAwesomeIcon icon={faDownload} /> Import from roster
+                  </LoadingButton>
+
+                  <LoadingButton
+                    onClick={() => importZooRoleMutation.mutate()}
+                    isLoading={importZooRoleMutation.isPending}
+                    loadingText="Importing..."
+                    className="w-full px-3 py-1 bg-blue-700 hover:bg-blue-800 rounded text-xs"
+                  >
+                    <FontAwesomeIcon icon={faUsers} />
+                    Import Members with Role membership
+                  </LoadingButton>
+                </div>
 
                 <input
                   type="text"
@@ -456,9 +618,10 @@ export default function PayoutClient() {
                 {searchQuery.length >= 2 && searchResults.length > 0 && (
                   <div className="max-h-48 overflow-y-auto space-y-1">
                     {searchResults.map((user) => (
-                      <button
+                      <LoadingButton
                         key={user.id}
                         onClick={() => addEntryMutation.mutate(user)}
+                        isLoading={addEntryMutation.isPending}
                         className="w-full text-left px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm flex items-center justify-between"
                       >
                         <div>
@@ -473,14 +636,49 @@ export default function PayoutClient() {
                           icon={faPlus}
                           className="text-blue-400"
                         />
-                      </button>
+                      </LoadingButton>
                     ))}
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-4 p-4 bg-blue-950 rounded border border-blue-700">
+              <div>
+                <div className="text-sm text-slate-400">Gold total</div>
+                <div className="text-2xl font-bold text-yellow-400">
+                  {selectedSession.goldPool.toFixed(0)} or
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-slate-400">Total points</div>
+                <div className="text-2xl font-bold text-blue-400">
+                  {calculations.totalPoints}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-slate-400">Price per point</div>
+                <div className="text-2xl font-bold text-emerald-400">
+                  {Math.floor(calculations.goldPerPoint)}
+                </div>
+              </div>
+            </div>
+
             {/* Players List */}
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Search players by name..."
+                value={playerSearchQuery}
+                onChange={(e) => {
+                  setPlayerSearchQuery(e.target.value);
+                  setCurrentPlayersPage(1);
+                }}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -499,14 +697,16 @@ export default function PayoutClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  {calculations.entries.map((entry) => {
+                  {paginatedEntries.map((entry) => {
                     const localEdits = counterEdits[entry.id] || {};
                     const displayEntry = { ...entry, ...localEdits };
 
                     return (
                       <tr
                         key={entry.id}
-                        className="border-b border-slate-800 hover:bg-slate-900"
+                        className={`border-b border-slate-800 hover:bg-slate-900 transition-colors ${
+                          entry.isPaid ? "bg-slate-800/40 opacity-60" : ""
+                        }`}
                       >
                         <td className="px-3 py-2 font-semibold">
                           {entry.displayName || entry.username}
@@ -515,6 +715,8 @@ export default function PayoutClient() {
                           <input
                             type="number"
                             min="0"
+                            disabled={entry.isPaid}
+                            readOnly={entry.isPaid}
                             value={displayEntry.wars}
                             onChange={(e) =>
                               handleCounterChange(
@@ -523,13 +725,19 @@ export default function PayoutClient() {
                                 parseInt(e.target.value) || 0,
                               )
                             }
-                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                            className={`w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center ${
+                              entry.isPaid
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
                           />
                         </td>
                         <td className="text-center px-3 py-2">
                           <input
                             type="number"
                             min="0"
+                            disabled={entry.isPaid}
+                            readOnly={entry.isPaid}
                             value={displayEntry.races}
                             onChange={(e) =>
                               handleCounterChange(
@@ -538,13 +746,19 @@ export default function PayoutClient() {
                                 parseInt(e.target.value) || 0,
                               )
                             }
-                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                            className={`w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center ${
+                              entry.isPaid
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
                           />
                         </td>
                         <td className="text-center px-3 py-2">
                           <input
                             type="number"
                             min="0"
+                            disabled={entry.isPaid}
+                            readOnly={entry.isPaid}
                             value={displayEntry.reviews}
                             onChange={(e) =>
                               handleCounterChange(
@@ -553,13 +767,19 @@ export default function PayoutClient() {
                                 parseInt(e.target.value) || 0,
                               )
                             }
-                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                            className={`w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center ${
+                              entry.isPaid
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
                           />
                         </td>
                         <td className="text-center px-3 py-2">
                           <input
                             type="number"
                             min="0"
+                            disabled={entry.isPaid}
+                            readOnly={entry.isPaid}
                             value={displayEntry.bonus}
                             onChange={(e) =>
                               handleCounterChange(
@@ -568,13 +788,19 @@ export default function PayoutClient() {
                                 parseInt(e.target.value) || 0,
                               )
                             }
-                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                            className={`w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center ${
+                              entry.isPaid
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
                           />
                         </td>
                         <td className="text-center px-3 py-2">
                           <input
                             type="number"
                             min="0"
+                            disabled={entry.isPaid}
+                            readOnly={entry.isPaid}
                             value={displayEntry.invasions}
                             onChange={(e) =>
                               handleCounterChange(
@@ -583,13 +809,19 @@ export default function PayoutClient() {
                                 parseInt(e.target.value) || 0,
                               )
                             }
-                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                            className={`w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center ${
+                              entry.isPaid
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
                           />
                         </td>
                         <td className="text-center px-3 py-2">
                           <input
                             type="number"
                             min="0"
+                            disabled={entry.isPaid}
+                            readOnly={entry.isPaid}
                             value={displayEntry.vods}
                             onChange={(e) =>
                               handleCounterChange(
@@ -598,7 +830,11 @@ export default function PayoutClient() {
                                 parseInt(e.target.value) || 0,
                               )
                             }
-                            className="w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center"
+                            className={`w-12 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-center ${
+                              entry.isPaid
+                                ? "opacity-50 cursor-not-allowed"
+                                : ""
+                            }`}
                           />
                         </td>
                         <td className="text-center px-3 py-2 font-semibold">
@@ -630,7 +866,7 @@ export default function PayoutClient() {
                           ).toFixed(0)}
                         </td>
                         <td className="text-center px-3 py-2">
-                          <button
+                          <LoadingButton
                             onClick={() =>
                               updateEntryMutation.mutate({
                                 entryId: entry.id,
@@ -639,6 +875,7 @@ export default function PayoutClient() {
                                 } as Partial<PayoutEntry>,
                               })
                             }
+                            isLoading={updateEntryMutation.isPending}
                             className={`px-2 py-1 rounded transition-colors ${
                               entry.isPaid
                                 ? "bg-green-700 text-white"
@@ -648,43 +885,66 @@ export default function PayoutClient() {
                             <FontAwesomeIcon
                               icon={entry.isPaid ? faCheck : faXmark}
                             />
-                          </button>
+                          </LoadingButton>
                         </td>
                         <td className="text-center px-3 py-2">
-                          <button
+                          <LoadingButton
                             onClick={() => deleteEntryMutation.mutate(entry.id)}
+                            isLoading={deleteEntryMutation.isPending}
                             className="px-2 py-1 bg-red-900 hover:bg-red-800 rounded text-red-200"
                           >
                             <FontAwesomeIcon icon={faTrash} />
-                          </button>
+                          </LoadingButton>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
-            </div>
 
-            {/* Summary */}
-            <div className="grid grid-cols-3 gap-4 p-4 bg-blue-950 rounded border border-blue-700">
-              <div>
-                <div className="text-sm text-slate-400">Gold total</div>
-                <div className="text-2xl font-bold text-yellow-400">
-                  {selectedSession.goldPool.toFixed(0)} or
+              {totalPlayersPages > 1 && (
+                <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
+                  <span>
+                    Showing{" "}
+                    {totalFilteredPlayers === 0
+                      ? 0
+                      : (currentPlayersPage - 1) * PLAYERS_PER_PAGE + 1}
+                    -
+                    {Math.min(
+                      currentPlayersPage * PLAYERS_PER_PAGE,
+                      totalFilteredPlayers,
+                    )}{" "}
+                    of {totalFilteredPlayers} players
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCurrentPlayersPage((prev) => Math.max(1, prev - 1))
+                      }
+                      disabled={currentPlayersPage <= 1}
+                      className="rounded bg-slate-800 px-2 py-1 disabled:opacity-40"
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      Page {currentPlayersPage}/{totalPlayersPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCurrentPlayersPage((prev) =>
+                          Math.min(totalPlayersPages, prev + 1),
+                        )
+                      }
+                      disabled={currentPlayersPage >= totalPlayersPages}
+                      className="rounded bg-slate-800 px-2 py-1 disabled:opacity-40"
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <div className="text-sm text-slate-400">Total points</div>
-                <div className="text-2xl font-bold text-blue-400">
-                  {calculations.totalPoints}
-                </div>
-              </div>
-              <div>
-                <div className="text-sm text-slate-400">Price per point</div>
-                <div className="text-2xl font-bold text-emerald-400">
-                  {calculations.goldPerPoint.toFixed(2)}
-                </div>
-              </div>
+              )}
             </div>
           </div>
         ) : (
@@ -697,6 +957,38 @@ export default function PayoutClient() {
           </div>
         )}
       </div>
+
+      {deleteSessionModalOpen && selectedSessionId ? (
+        <div className="fixed bottom-4 right-4 z-50">
+          <div className="w-80 rounded-lg border border-slate-700 bg-slate-900 p-5">
+            <h4 className="text-lg font-semibold text-slate-100">
+              Confirm payout deletion
+            </h4>
+            <p className="mt-2 text-sm text-slate-300">
+              This action will permanently delete this payout session and all
+              its entries.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteSessionModalOpen(false)}
+                className="rounded bg-slate-700 px-3 py-2 text-sm text-slate-100 hover:bg-slate-600"
+              >
+                Cancel
+              </button>
+              <LoadingButton
+                type="button"
+                onClick={() => deleteSessionMutation.mutate(selectedSessionId)}
+                isLoading={deleteSessionMutation.isPending}
+                loadingText="Deleting..."
+                className="rounded bg-red-700 px-3 py-2 text-sm text-white hover:bg-red-800"
+              >
+                Delete
+              </LoadingButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

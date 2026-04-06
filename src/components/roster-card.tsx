@@ -949,8 +949,16 @@ export function RosterCard() {
                 }}
                 className="flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
               >
-                <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
-                Archive
+                {archiveRosterMutation.isPending ? (
+                  <>
+                    <LoadingIndicator /> Archiving...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
+                    Archive
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -985,8 +993,16 @@ export function RosterCard() {
                 }}
                 className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:opacity-50"
               >
-                <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-                Clear
+                {clearRosterMutation.isPending ? (
+                  <>
+                    <LoadingIndicator /> Clearing...
+                  </>
+                ) : (
+                  <>
+                    <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
+                    Clear
+                  </>
+                )}
               </button>
             </div>
           </div>

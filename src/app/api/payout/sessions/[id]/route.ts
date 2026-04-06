@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -17,15 +17,21 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
+        const requestedGuildId = request.nextUrl.searchParams.get("guildId");
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            requestedGuildId,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
         }
 
-        const guildId = guilds[0].id;
-
         const payoutSession = await prisma.payoutSession.findFirst({
-            where: { id, discordGuildId: guildId },
+            where: { id, discordGuildId: resolved.guildId },
             include: { entries: { orderBy: { displayName: "asc" } } },
         });
 
@@ -54,19 +60,38 @@ export async function PATCH(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
+        const payload = (await request.json()) as {
+            goldPool?: number;
+            status?: string;
+            guildId?: string;
+        };
+
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            payload.guildId ?? null,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
         }
 
-        const guildId = guilds[0].id;
-        const { goldPool, status } = await request.json();
+        const targetSession = await prisma.payoutSession.findFirst({
+            where: { id, discordGuildId: resolved.guildId },
+            select: { id: true },
+        });
+
+        if (!targetSession) {
+            return NextResponse.json({ error: "Not found" }, { status: 404 });
+        }
 
         const payoutSession = await prisma.payoutSession.update({
             where: { id },
             data: {
-                ...(goldPool !== undefined && { goldPool }),
-                ...(status !== undefined && { status }),
+                ...(payload.goldPool !== undefined && { goldPool: payload.goldPool }),
+                ...(payload.status !== undefined && { status: payload.status }),
             },
             include: { entries: { orderBy: { displayName: "asc" } } },
         });
@@ -74,6 +99,53 @@ export async function PATCH(
         return NextResponse.json(payoutSession);
     } catch (error) {
         console.error("PATCH /api/payout/sessions/[id]", error);
+        return NextResponse.json(
+            { error: "Internal server error" },
+            { status: 500 }
+        );
+    }
+}
+
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { id } = await params;
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.email) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const requestedGuildId = request.nextUrl.searchParams.get("guildId");
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            requestedGuildId,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
+        }
+
+        const targetSession = await prisma.payoutSession.findFirst({
+            where: { id, discordGuildId: resolved.guildId },
+            select: { id: true },
+        });
+
+        if (!targetSession) {
+            return NextResponse.json({ error: "Not found" }, { status: 404 });
+        }
+
+        await prisma.payoutSession.delete({
+            where: { id },
+        });
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("DELETE /api/payout/sessions/[id]", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

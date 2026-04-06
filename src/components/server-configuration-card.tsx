@@ -118,12 +118,16 @@ function EditButtons({
       <>
         <button
           type="button"
-          className="rounded-md border border-emerald-500/60 px-1.5 py-1 text-emerald-400/70 disabled:opacity-40"
+          className="rounded-md border border-emerald-500/60 px-1.5 py-1 text-emerald-400/70 disabled:opacity-40 inline-flex items-center justify-center"
           onClick={onSave}
           disabled={isPending}
           aria-label="Confirm"
         >
-          <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />
+          {isPending ? (
+            <LoadingIndicator />
+          ) : (
+            <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />
+          )}
         </button>
         <button
           type="button"

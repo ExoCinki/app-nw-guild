@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -13,22 +13,45 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
+        const payload = (await request.json()) as {
+            sessionId: string;
+            discordUserId: string;
+            username: string;
+            displayName?: string;
+            guildId?: string;
+        };
+
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            payload.guildId ?? null,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
         }
 
-        const guildId = guilds[0].id;
-        const { sessionId, discordUserId, username, displayName } =
-            await request.json();
+        const targetSession = await prisma.payoutSession.findFirst({
+            where: {
+                id: payload.sessionId,
+                discordGuildId: resolved.guildId,
+            },
+            select: { id: true },
+        });
+
+        if (!targetSession) {
+            return NextResponse.json({ error: "Session not found" }, { status: 404 });
+        }
 
         const entry = await prisma.payoutEntry.create({
             data: {
-                sessionId,
-                discordGuildId: guildId,
-                discordUserId,
-                username,
-                displayName: displayName || username,
+                sessionId: payload.sessionId,
+                discordGuildId: resolved.guildId,
+                discordUserId: payload.discordUserId,
+                username: payload.username,
+                displayName: payload.displayName || payload.username,
             },
         });
 
@@ -49,16 +72,48 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
+        const payload = (await request.json()) as {
+            entryId: string;
+            updates?: {
+                wars?: number;
+                races?: number;
+                reviews?: number;
+                bonus?: number;
+                invasions?: number;
+                vods?: number;
+                isPaid?: boolean;
+                displayName?: string;
+            };
+            guildId?: string;
+        };
+
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            payload.guildId ?? null,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
         }
 
-        const { entryId, updates } = await request.json();
+        const targetEntry = await prisma.payoutEntry.findFirst({
+            where: {
+                id: payload.entryId,
+                discordGuildId: resolved.guildId,
+            },
+            select: { id: true },
+        });
+
+        if (!targetEntry) {
+            return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+        }
 
         const entry = await prisma.payoutEntry.update({
-            where: { id: entryId },
-            data: updates || {},
+            where: { id: payload.entryId },
+            data: payload.updates || {},
         });
 
         return NextResponse.json(entry);
@@ -78,15 +133,37 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
+        const payload = (await request.json()) as {
+            entryId: string;
+            guildId?: string;
+        };
+
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            payload.guildId ?? null,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
         }
 
-        const { entryId } = await request.json();
+        const targetEntry = await prisma.payoutEntry.findFirst({
+            where: {
+                id: payload.entryId,
+                discordGuildId: resolved.guildId,
+            },
+            select: { id: true },
+        });
+
+        if (!targetEntry) {
+            return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+        }
 
         await prisma.payoutEntry.delete({
-            where: { id: entryId },
+            where: { id: payload.entryId },
         });
 
         return NextResponse.json({ success: true });

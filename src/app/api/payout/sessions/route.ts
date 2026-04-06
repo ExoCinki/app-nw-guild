@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -13,15 +13,21 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
+        const requestedGuildId = request.nextUrl.searchParams.get("guildId");
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            requestedGuildId,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
         }
 
-        const guildId = guilds[0].id;
-
         const sessions = await prisma.payoutSession.findMany({
-            where: { discordGuildId: guildId },
+            where: { discordGuildId: resolved.guildId },
             include: { entries: { orderBy: { displayName: "asc" } } },
             orderBy: { createdAt: "desc" },
         });
@@ -43,18 +49,27 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
-        }
+        const payload = (await request.json()) as {
+            goldPool?: number;
+            guildId?: string;
+        };
 
-        const guildId = guilds[0].id;
-        const { goldPool } = await request.json();
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            payload.guildId ?? null,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
+        }
 
         const payoutSession = await prisma.payoutSession.create({
             data: {
-                discordGuildId: guildId,
-                goldPool: goldPool || 0,
+                discordGuildId: resolved.guildId,
+                goldPool: payload.goldPool || 0,
             },
         });
 

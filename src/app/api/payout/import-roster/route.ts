@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -13,17 +13,38 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const guilds = await getManagedWhitelistedGuilds(session.user.email);
-        if (!guilds || guilds.length === 0) {
-            return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
+        const payload = (await request.json()) as {
+            sessionId: string;
+            guildId?: string;
+        };
+
+        const resolved = await resolveManagedGuildForUser(
+            session.user.email,
+            payload.guildId ?? null,
+        );
+
+        if ("error" in resolved) {
+            return NextResponse.json(
+                { error: resolved.error },
+                { status: resolved.status },
+            );
         }
 
-        const guildId = guilds[0].id;
-        const { sessionId } = await request.json();
+        const sessionExists = await prisma.payoutSession.findFirst({
+            where: {
+                id: payload.sessionId,
+                discordGuildId: resolved.guildId,
+            },
+            select: { id: true },
+        });
+
+        if (!sessionExists) {
+            return NextResponse.json({ error: "Session not found" }, { status: 404 });
+        }
 
         // Get the roster
         const roster = await prisma.roster.findUnique({
-            where: { discordGuildId: guildId },
+            where: { discordGuildId: resolved.guildId },
             include: {
                 groups: {
                     include: {
@@ -64,14 +85,14 @@ export async function POST(request: NextRequest) {
                 const entry = await prisma.payoutEntry.upsert({
                     where: {
                         sessionId_discordUserId: {
-                            sessionId,
+                            sessionId: payload.sessionId,
                             discordUserId: player.name, // Use name as ID since we don't have actual Discord ID
                         },
                     },
                     update: {}, // Don't update if already exists
                     create: {
-                        sessionId,
-                        discordGuildId: guildId,
+                        sessionId: payload.sessionId,
+                        discordGuildId: resolved.guildId,
                         discordUserId: player.name,
                         username: player.name,
                         displayName: player.displayName,
