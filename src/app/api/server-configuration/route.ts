@@ -12,6 +12,18 @@ type DiscordRole = {
     position: number;
 };
 
+const preferredBotTokenByGuild = new Map<string, string>();
+
+function getDiscordBotTokens(): string[] {
+    const multi = (process.env.DISCORD_BOT_TOKENS ?? "")
+        .split(",")
+        .map((token) => token.trim())
+        .filter(Boolean);
+    const single = (process.env.DISCORD_BOT_TOKEN ?? "").trim();
+
+    return [...new Set([...multi, ...(single ? [single] : [])])];
+}
+
 function parseNonNegativeInt(value: unknown, fieldName: string): number {
     if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
         throw new Error(`${fieldName} must be a non-negative integer`);
@@ -24,61 +36,79 @@ async function getDiscordGuildRoles(guildId: string): Promise<{
     roles: DiscordRole[];
     rolesError: string | null;
 }> {
-    const botToken = process.env.DISCORD_BOT_TOKEN;
+    const tokens = getDiscordBotTokens();
 
-    if (!botToken) {
+    if (tokens.length === 0) {
         return {
             roles: [],
-            rolesError: "DISCORD_BOT_TOKEN manquant pour charger les roles.",
+            rolesError: "DISCORD_BOT_TOKEN ou DISCORD_BOT_TOKENS manquant pour charger les roles.",
         };
     }
 
-    const response = await fetch(
-        `https://discord.com/api/v10/guilds/${guildId}/roles`,
-        {
-            headers: {
-                Authorization: `Bot ${botToken}`,
+    const preferred = preferredBotTokenByGuild.get(guildId);
+    const orderedTokens = preferred
+        ? [preferred, ...tokens.filter((token) => token !== preferred)]
+        : tokens;
+
+    let lastStatus: number | null = null;
+
+    for (const botToken of orderedTokens) {
+        const response = await fetch(
+            `https://discord.com/api/v10/guilds/${guildId}/roles`,
+            {
+                headers: {
+                    Authorization: `Bot ${botToken}`,
+                },
+                cache: "no-store",
             },
-            cache: "no-store",
-        },
-    );
+        );
 
-    if (!response.ok) {
+        lastStatus = response.status;
+
+        if (!response.ok) {
+            continue;
+        }
+
+        preferredBotTokenByGuild.set(guildId, botToken);
+
+        const roles = (await response.json()) as Array<{
+            id: string;
+            name: string;
+            position: number;
+            managed?: boolean;
+            tags?: {
+                bot_id?: string;
+                integration_id?: string;
+            };
+        }>;
+
+        const filtered = roles
+            .filter((role) => role.id !== guildId)
+            .filter(
+                (role) =>
+                    !role.managed &&
+                    !role.tags?.bot_id &&
+                    !role.tags?.integration_id,
+            )
+            .sort((a, b) => b.position - a.position)
+            .map((role) => ({
+                id: role.id,
+                name: role.name,
+                position: role.position,
+            }));
+
         return {
-            roles: [],
-            rolesError: "Impossible de charger les roles Discord pour ce serveur.",
+            roles: filtered,
+            rolesError: null,
         };
     }
-
-    const roles = (await response.json()) as Array<{
-        id: string;
-        name: string;
-        position: number;
-        managed?: boolean;
-        tags?: {
-            bot_id?: string;
-            integration_id?: string;
-        };
-    }>;
-
-    const filtered = roles
-        .filter((role) => role.id !== guildId)
-        .filter(
-            (role) =>
-                !role.managed &&
-                !role.tags?.bot_id &&
-                !role.tags?.integration_id,
-        )
-        .sort((a, b) => b.position - a.position)
-        .map((role) => ({
-            id: role.id,
-            name: role.name,
-            position: role.position,
-        }));
 
     return {
-        roles: filtered,
-        rolesError: null,
+        roles: [],
+        rolesError:
+            lastStatus !== null
+                ? `Impossible de charger les roles Discord pour ce serveur (status ${lastStatus}).`
+                : "Impossible de charger les roles Discord pour ce serveur.",
     };
 }
 

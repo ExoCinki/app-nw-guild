@@ -9,6 +9,82 @@ type ManagedGuild = {
     iconUrl: string | null;
 };
 
+type DiscordGuild = {
+    id: string;
+    name: string;
+    icon: string | null;
+    permissions: string | number;
+};
+
+async function fetchDiscordGuilds(accessToken: string): Promise<DiscordGuild[] | null> {
+    const discordRes = await fetch("https://discord.com/api/v10/users/@me/guilds", {
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
+        cache: "no-store",
+    });
+
+    if (!discordRes.ok) {
+        return null;
+    }
+
+    return (await discordRes.json()) as DiscordGuild[];
+}
+
+async function refreshDiscordAccessToken(
+    refreshToken: string,
+): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number | null;
+} | null> {
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+        return null;
+    }
+
+    const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+    });
+
+    const response = await fetch("https://discord.com/api/oauth2/token", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+        cache: "no-store",
+    });
+
+    if (!response.ok) {
+        return null;
+    }
+
+    const payload = (await response.json()) as {
+        access_token?: string;
+        refresh_token?: string;
+        expires_in?: number;
+    };
+
+    if (!payload.access_token) {
+        return null;
+    }
+
+    return {
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token ?? refreshToken,
+        expiresAt:
+            typeof payload.expires_in === "number"
+                ? Math.floor(Date.now() / 1000) + payload.expires_in
+                : null,
+    };
+}
+
 export async function getManagedWhitelistedGuilds(
     userEmail: string,
 ): Promise<ManagedGuild[] | null> {
@@ -17,30 +93,44 @@ export async function getManagedWhitelistedGuilds(
             user: { email: userEmail },
             provider: "discord",
         },
-        select: { access_token: true },
+        select: {
+            id: true,
+            access_token: true,
+            refresh_token: true,
+        },
     });
 
-    if (!account?.access_token) {
+    if (!account) {
         return null;
     }
 
-    const discordRes = await fetch("https://discord.com/api/v10/users/@me/guilds", {
-        headers: {
-            Authorization: `Bearer ${account.access_token}`,
-        },
-        cache: "no-store",
-    });
+    let guilds: DiscordGuild[] | null = null;
 
-    if (!discordRes.ok) {
-        throw new Error("Failed to fetch Discord guilds");
+    if (account.access_token) {
+        guilds = await fetchDiscordGuilds(account.access_token);
     }
 
-    const guilds = (await discordRes.json()) as Array<{
-        id: string;
-        name: string;
-        icon: string | null;
-        permissions: string | number;
-    }>;
+    // Si le token est absent/expire, tente un refresh OAuth puis reessaie.
+    if (!guilds && account.refresh_token) {
+        const refreshed = await refreshDiscordAccessToken(account.refresh_token);
+
+        if (refreshed) {
+            await prisma.account.update({
+                where: { id: account.id },
+                data: {
+                    access_token: refreshed.accessToken,
+                    refresh_token: refreshed.refreshToken,
+                    expires_at: refreshed.expiresAt,
+                },
+            });
+
+            guilds = await fetchDiscordGuilds(refreshed.accessToken);
+        }
+    }
+
+    if (!guilds) {
+        return null;
+    }
 
     const guildMap = new Map(guilds.map((guild) => [guild.id, guild]));
 

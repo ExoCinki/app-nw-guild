@@ -94,3 +94,38 @@ model GuildConfiguration {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+model Roster {
+  id             String        @id @default(cuid())
+  discordGuildId String        @unique
+  selectedEventId String?
+  raidHelperEventsCache Json?
+  raidHelperParticipantsCache Json?
+  raidHelperEventsCachedAt DateTime?
+  raidHelperParticipantsCachedAt DateTime?
+  groups         RosterGroup[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model RosterGroup {
+  id          String       @id @default(cuid())
+  rosterId    String
+  groupNumber Int
+  name        String?
+  slots       RosterSlot[]
+  roster      Roster       @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+
+  @@unique([rosterId, groupNumber])
+}
+
+model RosterSlot {
+  id         String      @id @default(cuid())
+  groupId    String
+  position   Int
+  playerName String?
+  role       String?
+  group      RosterGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, position])
+}
