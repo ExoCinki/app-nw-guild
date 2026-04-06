@@ -64,6 +64,8 @@ export async function PATCH(
         const payload = (await request.json()) as {
             goldPool?: number;
             status?: string;
+            name?: string | null;
+            isLocked?: boolean;
             guildId?: string;
         };
 
@@ -79,13 +81,29 @@ export async function PATCH(
             );
         }
 
+        const dbUser = await prisma.user.findUnique({
+            where: { email: session.user.email },
+            select: { id: true },
+        });
+
+        if (!dbUser) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+
         const targetSession = await prisma.payoutSession.findFirst({
             where: { id, discordGuildId: resolved.guildId },
-            select: { id: true },
+            select: { id: true, isLocked: true, lockedByUserId: true },
         });
 
         if (!targetSession) {
             return NextResponse.json({ error: "Not found" }, { status: 404 });
+        }
+
+        if (payload.isLocked === false && targetSession.isLocked && targetSession.lockedByUserId !== dbUser.id) {
+            return NextResponse.json(
+                { error: "Seul l'utilisateur qui a verrouillé cette session peut la déverrouiller" },
+                { status: 403 },
+            );
         }
 
         const payoutSession = await prisma.payoutSession.update({
@@ -93,6 +111,11 @@ export async function PATCH(
             data: {
                 ...(payload.goldPool !== undefined && { goldPool: payload.goldPool }),
                 ...(payload.status !== undefined && { status: payload.status }),
+                ...(payload.name !== undefined && { name: payload.name }),
+                ...(payload.isLocked !== undefined && {
+                    isLocked: payload.isLocked,
+                    lockedByUserId: payload.isLocked ? dbUser.id : null,
+                }),
             },
             include: { entries: { orderBy: { displayName: "asc" } } },
         });
@@ -135,11 +158,18 @@ export async function DELETE(
 
         const targetSession = await prisma.payoutSession.findFirst({
             where: { id, discordGuildId: resolved.guildId },
-            select: { id: true },
+            select: { id: true, isLocked: true },
         });
 
         if (!targetSession) {
             return NextResponse.json({ error: "Not found" }, { status: 404 });
+        }
+
+        if (targetSession.isLocked) {
+            return NextResponse.json(
+                { error: "Cette session est verrouillée et ne peut pas être supprimée" },
+                { status: 403 },
+            );
         }
 
         await prisma.payoutSession.delete({

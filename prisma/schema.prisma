@@ -147,6 +147,9 @@ model PayoutSession {
   discordGuildId String
   goldPool       Float           @default(0)
   status         String          @default("DRAFT")
+  name           String?
+  isLocked       Boolean         @default(false)
+  lockedByUserId String?
   entries        PayoutEntry[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt

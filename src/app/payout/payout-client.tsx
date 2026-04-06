@@ -11,6 +11,9 @@ import {
   faXmark,
   faDownload,
   faUsers,
+  faLock,
+  faLockOpen,
+  faPencil,
 } from "@fortawesome/free-solid-svg-icons";
 import { LoadingButton } from "@/components/loading-button";
 import { LoadingIndicator } from "@/components/loading-indicator";
@@ -20,6 +23,9 @@ interface PayoutSession {
   discordGuildId: string;
   goldPool: number;
   status: string;
+  name: string | null;
+  isLocked: boolean;
+  lockedByUserId: string | null;
   entries: PayoutEntry[];
   createdAt: string;
   updatedAt: string;
@@ -60,6 +66,10 @@ export default function PayoutClient() {
     useState<string>("0");
   const [deleteSessionModalOpen, setDeleteSessionModalOpen] =
     useState<boolean>(false);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null,
+  );
+  const [renameInput, setRenameInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [playerSearchQuery, setPlayerSearchQuery] = useState<string>("");
   const [currentPlayersPage, setCurrentPlayersPage] = useState<number>(1);
@@ -75,22 +85,32 @@ export default function PayoutClient() {
 
   const queryClient = useQueryClient();
 
-  // Debounced update function
+  // Debounced update function — one timer per (entryId, field) to avoid cross-field rollbacks
   const debouncedUpdate = useCallback(
-    (entryId: string, updates: Partial<PayoutEntry>) => {
-      // Clear existing timer
-      if (debounceTimers.current[entryId]) {
-        clearTimeout(debounceTimers.current[entryId]);
+    (entryId: string, field: string, value: number) => {
+      const timerKey = `${entryId}-${field}`;
+
+      if (debounceTimers.current[timerKey]) {
+        clearTimeout(debounceTimers.current[timerKey]);
       }
 
-      // Set new timer that triggers mutation after 300ms of inactivity
-      debounceTimers.current[entryId] = setTimeout(() => {
-        updateEntryMutateRef.current?.({ entryId, updates });
-        // Clear from local edits after sending
+      debounceTimers.current[timerKey] = setTimeout(() => {
+        updateEntryMutateRef.current?.({
+          entryId,
+          updates: { [field]: value } as Partial<PayoutEntry>,
+        });
+        // Only clear this specific field from local edits
         setCounterEdits((prev) => {
-          const next = { ...prev };
-          delete next[entryId];
-          return next;
+          const entry = prev[entryId];
+          if (!entry) return prev;
+          const next = { ...entry };
+          delete next[field as keyof PayoutEntry];
+          if (Object.keys(next).length === 0) {
+            const top = { ...prev };
+            delete top[entryId];
+            return top;
+          }
+          return { ...prev, [entryId]: next };
         });
       }, 300);
     },
@@ -107,10 +127,21 @@ export default function PayoutClient() {
           [field]: value,
         },
       }));
-      debouncedUpdate(entryId, { [field]: value } as Partial<PayoutEntry>);
+      debouncedUpdate(entryId, field, value);
     },
     [debouncedUpdate],
   );
+
+  // Fetch current user (for lock permission check)
+  const { data: currentUser } = useQuery({
+    queryKey: ["current-user"],
+    queryFn: async () => {
+      const res = await fetch("/api/me");
+      if (!res.ok) return null;
+      const data = (await res.json()) as { user: { id: string } };
+      return data.user;
+    },
+  });
 
   // Fetch sessions
   const { data: sessions = [], isLoading: loadingSessions } = useQuery({
@@ -225,6 +256,66 @@ export default function PayoutClient() {
       toast.success("Session deleted");
     },
     onError: (error: Error) => toast.error(error.message),
+  });
+
+  // Toggle lock
+  const toggleLockMutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      isLocked,
+    }: {
+      sessionId: string;
+      isLocked: boolean;
+    }) => {
+      const res = await fetch(`/api/payout/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isLocked }),
+      });
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Failed to update lock");
+      }
+      return res.json() as Promise<PayoutSession>;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+        old.map((s) => (s.id === updated.id ? updated : s)),
+      );
+      toast.success(
+        updated.isLocked ? "Session verrouillée" : "Session déverrouillée",
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  // Rename session
+  const renameSessionMutation = useMutation({
+    mutationFn: async ({
+      sessionId,
+      name,
+    }: {
+      sessionId: string;
+      name: string;
+    }) => {
+      const res = await fetch(`/api/payout/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() || null }),
+      });
+      if (!res.ok) throw new Error("Failed to rename session");
+      return res.json() as Promise<PayoutSession>;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+        old.map((s) => (s.id === updated.id ? updated : s)),
+      );
+      setRenamingSessionId(null);
+      toast.success("Session renommée");
+    },
+    onError: () => toast.error("Erreur lors du renommage"),
   });
 
   // Add entry
@@ -525,35 +616,140 @@ export default function PayoutClient() {
             {/* Sessions List */}
             <div className="space-y-2">
               {sessions.map((session) => (
-                <div key={session.id} className="flex gap-2 items-center">
-                  <button
-                    onClick={() => setSelectedSessionId(session.id)}
-                    className={`flex-1 text-left px-4 py-3 rounded border transition-colors ${
-                      selectedSessionId === session.id
-                        ? "bg-blue-700 border-blue-500"
-                        : "bg-slate-800 border-slate-700 hover:bg-slate-700"
-                    }`}
-                  >
-                    <div className="text-sm font-mono">
-                      {new Date(session.createdAt).toLocaleDateString("en-US")}
+                <div key={session.id} className="flex gap-2 items-stretch">
+                  {renamingSessionId === session.id ? (
+                    /* Inline rename editor */
+                    <div className="flex flex-1 gap-1 px-3 py-2 bg-slate-800 border border-blue-500 rounded items-center">
+                      <input
+                        autoFocus
+                        value={renameInput}
+                        onChange={(e) => setRenameInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            renameSessionMutation.mutate({
+                              sessionId: session.id,
+                              name: renameInput,
+                            });
+                          if (e.key === "Escape") setRenamingSessionId(null);
+                        }}
+                        className="flex-1 bg-transparent text-slate-100 text-sm outline-none placeholder-slate-500"
+                        placeholder="Nom de la session..."
+                      />
+                      <LoadingButton
+                        onClick={() =>
+                          renameSessionMutation.mutate({
+                            sessionId: session.id,
+                            name: renameInput,
+                          })
+                        }
+                        isLoading={renameSessionMutation.isPending}
+                        className="px-2 py-1 rounded text-green-400 hover:bg-slate-700"
+                        title="Confirmer"
+                      >
+                        <FontAwesomeIcon icon={faCheck} />
+                      </LoadingButton>
+                      <button
+                        type="button"
+                        onClick={() => setRenamingSessionId(null)}
+                        className="px-2 py-1 rounded text-slate-400 hover:bg-slate-700"
+                        title="Annuler"
+                      >
+                        <FontAwesomeIcon icon={faXmark} />
+                      </button>
                     </div>
-                    <div className="text-lg font-semibold">
-                      {session.goldPool.toFixed(0)} or
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {session.entries.length} players
-                    </div>
-                  </button>
-                  {selectedSessionId === session.id && (
-                    <LoadingButton
-                      onClick={() => setDeleteSessionModalOpen(true)}
-                      isLoading={deleteSessionMutation.isPending}
-                      className="px-3 py-3 rounded bg-red-700 hover:bg-red-800 flex items-center"
-                      title="Delete payout"
-                      aria-label="Delete payout"
-                    >
-                      <FontAwesomeIcon icon={faTrash} />
-                    </LoadingButton>
+                  ) : (
+                    <>
+                      {/* Session card button */}
+                      <button
+                        onClick={() => setSelectedSessionId(session.id)}
+                        className={`flex-1 text-left px-4 py-3 rounded border transition-colors ${
+                          selectedSessionId === session.id
+                            ? "bg-blue-700 border-blue-500"
+                            : "bg-slate-800 border-slate-700 hover:bg-slate-700"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-sm font-mono flex-wrap">
+                          <span>
+                            {new Date(session.createdAt).toLocaleDateString(
+                              "fr-FR",
+                            )}
+                          </span>
+                          {session.name && (
+                            <span className="font-sans font-semibold text-slate-200 truncate max-w-[120px]">
+                              {session.name}
+                            </span>
+                          )}
+                          {session.isLocked && (
+                            <FontAwesomeIcon
+                              icon={faLock}
+                              className="text-yellow-400 text-xs"
+                            />
+                          )}
+                        </div>
+                        <div className="text-lg font-semibold">
+                          {session.goldPool.toFixed(0)} or
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {session.entries.length} players
+                        </div>
+                      </button>
+
+                      {/* Lock / unlock button — toujours visible */}
+                      <LoadingButton
+                        onClick={() =>
+                          toggleLockMutation.mutate({
+                            sessionId: session.id,
+                            isLocked: !session.isLocked,
+                          })
+                        }
+                        isLoading={toggleLockMutation.isPending}
+                        disabled={
+                          session.isLocked &&
+                          session.lockedByUserId !== currentUser?.id
+                        }
+                        className={`px-3 rounded ${
+                          session.isLocked
+                            ? "bg-yellow-700 hover:bg-yellow-600 text-yellow-100"
+                            : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+                        }`}
+                        title={
+                          session.isLocked ? "Déverrouiller" : "Verrouiller"
+                        }
+                      >
+                        <FontAwesomeIcon
+                          icon={session.isLocked ? faLock : faLockOpen}
+                        />
+                      </LoadingButton>
+
+                      {/* Rename — visible quand la session est sélectionnée */}
+                      {selectedSessionId === session.id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenameInput(session.name ?? "");
+                            setRenamingSessionId(session.id);
+                          }}
+                          className="px-3 rounded bg-slate-700 hover:bg-slate-600 text-slate-300"
+                          title="Renommer la session"
+                        >
+                          <FontAwesomeIcon icon={faPencil} />
+                        </button>
+                      )}
+
+                      {/* Delete — visible uniquement si sélectionnée ET non verrouillée */}
+                      {selectedSessionId === session.id &&
+                        !session.isLocked && (
+                          <LoadingButton
+                            onClick={() => setDeleteSessionModalOpen(true)}
+                            isLoading={deleteSessionMutation.isPending}
+                            className="px-3 rounded bg-red-700 hover:bg-red-800 flex items-center"
+                            title="Supprimer la session"
+                            aria-label="Supprimer la session"
+                          >
+                            <FontAwesomeIcon icon={faTrash} />
+                          </LoadingButton>
+                        )}
+                    </>
                   )}
                 </div>
               ))}
