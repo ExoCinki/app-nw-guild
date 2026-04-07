@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
         const resolved = await resolveManagedGuildForUser(
             session.user.email,
             requestedGuildId,
+            "payout",
         );
 
         if ("error" in resolved) {
@@ -58,6 +59,8 @@ export async function POST(request: NextRequest) {
         const resolved = await resolveManagedGuildForUser(
             session.user.email,
             payload.guildId ?? null,
+            "payout",
+            "write",
         );
 
         if ("error" in resolved) {

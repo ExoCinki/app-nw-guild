@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { hasGuildScopeAccess, type GuildAccessMode } from "@/lib/admin-access";
 import { publishLiveUpdate } from "@/lib/live-updates";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +11,14 @@ export const dynamic = "force-dynamic";
 const GROUP_COUNT = 10;
 const SLOT_COUNT = 5;
 
-async function resolveGuildForUser(email: string, guildIdFromQuery: string | null) {
+async function resolveGuildForUser(
+    email: string,
+    guildIdFromQuery: string | null,
+    mode: GuildAccessMode,
+) {
     const user = await prisma.user.findUnique({
         where: { email },
-        select: { id: true },
+        select: { id: true, discordId: true },
     });
 
     if (!user) {
@@ -46,6 +51,23 @@ async function resolveGuildForUser(email: string, guildIdFromQuery: string | nul
 
     if (!hasAccess) {
         return { error: "Guild is not manageable for this account", status: 403 as const };
+    }
+
+    const ownerDiscordId = process.env.OWNER_DISCORD_ID;
+    const isOwner = Boolean(
+        ownerDiscordId && user.discordId && user.discordId === ownerDiscordId,
+    );
+
+    const canAccessRoster = await hasGuildScopeAccess({
+        userId: user.id,
+        discordGuildId: guildId,
+        scope: "roster",
+        mode,
+        isOwner,
+    });
+
+    if (!canAccessRoster) {
+        return { error: "Access denied for roster module on this server", status: 403 as const };
     }
 
     const guildName =
@@ -95,7 +117,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const requestedGuildId = url.searchParams.get("guildId");
 
-    const resolved = await resolveGuildForUser(session.user.email, requestedGuildId);
+    const resolved = await resolveGuildForUser(session.user.email, requestedGuildId, "read");
 
     if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
@@ -168,6 +190,7 @@ export async function POST(request: Request) {
     const resolved = await resolveGuildForUser(
         session.user.email,
         payload.guildId ?? null,
+        "write",
     );
 
     if ("error" in resolved) {
@@ -268,6 +291,7 @@ export async function PATCH(request: Request) {
     const resolved = await resolveGuildForUser(
         session.user.email,
         payload.guildId ?? null,
+        "write",
     );
 
     if ("error" in resolved) {
@@ -318,7 +342,7 @@ export async function DELETE(request: Request) {
     const url = new URL(request.url);
     const requestedGuildId = url.searchParams.get("guildId");
 
-    const resolved = await resolveGuildForUser(session.user.email, requestedGuildId);
+    const resolved = await resolveGuildForUser(session.user.email, requestedGuildId, "write");
 
     if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });

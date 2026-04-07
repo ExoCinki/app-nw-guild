@@ -11,7 +11,7 @@ type ManagedGuild = {
 
 export type ManagedWhitelistedGuildsResult =
     | { ok: true; guilds: ManagedGuild[] }
-    | { ok: false; status: 401 | 503; error: string };
+    | { ok: false; status: 401 | 403 | 503; error: string };
 
 type ManagedGuildsCacheEntry = {
     guilds: ManagedGuild[];
@@ -149,6 +149,27 @@ async function refreshDiscordAccessToken(
 export async function getManagedWhitelistedGuilds(
     userEmail: string,
 ): Promise<ManagedWhitelistedGuildsResult> {
+    const user = await prisma.user.findUnique({
+        where: { email: userEmail },
+        select: { id: true, discordId: true },
+    });
+
+    const ownerDiscordId = process.env.OWNER_DISCORD_ID;
+    const isOwner = Boolean(
+        ownerDiscordId && user?.discordId && user.discordId === ownerDiscordId,
+    );
+
+    if (user?.discordId && !isOwner) {
+        const ban = await prisma.bannedDiscordUser.findUnique({
+            where: { discordId: user.discordId },
+            select: { id: true },
+        });
+
+        if (ban) {
+            return { ok: false, status: 403, error: "This Discord account has been banned by an administrator" };
+        }
+    }
+
     const cachedGuilds = getCachedManagedGuilds(userEmail);
     if (cachedGuilds) {
         return { ok: true, guilds: cachedGuilds };
@@ -236,10 +257,51 @@ export async function getManagedWhitelistedGuilds(
         },
     });
 
+    const accessOverrides = user?.id
+        ? await prisma.guildUserAccess.findMany({
+            where: { userId: user.id },
+            select: {
+                discordGuildId: true,
+                canReadRoster: true,
+                canReadPayout: true,
+                canReadConfiguration: true,
+            },
+        })
+        : [];
+
+    const overrideByGuildId = new Map(
+        accessOverrides.map((item) => [item.discordGuildId, item]),
+    );
+
+    const delegatedReadableGuildIds = new Set(
+        accessOverrides
+            .filter(
+                (item) =>
+                    item.canReadRoster ||
+                    item.canReadPayout ||
+                    item.canReadConfiguration,
+            )
+            .map((item) => item.discordGuildId),
+    );
+
     const managedGuilds = whitelistedGuilds
-        .filter((guild: { discordGuildId: string; name: string | null }) =>
-            adminGuildIds.has(guild.discordGuildId),
-        )
+        .filter((guild: { discordGuildId: string; name: string | null }) => {
+            const guildId = guild.discordGuildId;
+            const hasAdminAccess = adminGuildIds.has(guildId);
+            const hasDelegatedReadAccess = delegatedReadableGuildIds.has(guildId);
+
+            const override = overrideByGuildId.get(guildId);
+
+            if (override) {
+                return (
+                    override.canReadRoster ||
+                    override.canReadPayout ||
+                    override.canReadConfiguration
+                );
+            }
+
+            return hasAdminAccess || hasDelegatedReadAccess;
+        })
         .map((guild: { discordGuildId: string; name: string | null }) => ({
             id: guild.discordGuildId,
             name: guild.name ?? guildMap.get(guild.discordGuildId)?.name ?? null,

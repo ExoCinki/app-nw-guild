@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { WhitelistManager } from "@/components/whitelist-manager";
+import { GlobalAdminManager } from "@/components/global-admin-manager";
 import { prisma } from "@/lib/prisma";
 
 function maskApiKey(key: string | null): string {
@@ -69,6 +70,8 @@ export default async function AdminPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6">
+          <GlobalAdminManager />
+
           <WhitelistManager />
 
           <section className="rounded-xl border border-slate-800/60 bg-slate-900/70 p-4 sm:p-6">

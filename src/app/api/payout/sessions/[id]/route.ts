@@ -22,6 +22,7 @@ export async function GET(
         const resolved = await resolveManagedGuildForUser(
             session.user.email,
             requestedGuildId,
+            "payout",
         );
 
         if ("error" in resolved) {
@@ -72,6 +73,8 @@ export async function PATCH(
         const resolved = await resolveManagedGuildForUser(
             session.user.email,
             payload.guildId ?? null,
+            "payout",
+            "write",
         );
 
         if ("error" in resolved) {
@@ -147,6 +150,8 @@ export async function DELETE(
         const resolved = await resolveManagedGuildForUser(
             session.user.email,
             requestedGuildId,
+            "payout",
+            "write",
         );
 
         if ("error" in resolved) {

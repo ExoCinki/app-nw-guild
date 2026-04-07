@@ -18,6 +18,8 @@ model User {
   accounts        Account[]
   sessions        Session[]
   selectedGuild   SelectedGuild?
+  guildAccesses   GuildUserAccess[]
+  bansIssued      BannedDiscordUser[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -177,4 +179,33 @@ model PayoutEntry {
 
   @@unique([sessionId, discordUserId])
   @@index([discordGuildId])
+}
+
+model GuildUserAccess {
+  id                     String   @id @default(cuid())
+  userId                 String
+  discordGuildId         String
+  canReadRoster          Boolean  @default(true)
+  canWriteRoster         Boolean  @default(true)
+  canReadPayout          Boolean  @default(true)
+  canWritePayout         Boolean  @default(true)
+  canReadConfiguration   Boolean  @default(true)
+  canWriteConfiguration  Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, discordGuildId])
+  @@index([discordGuildId])
+}
+
+model BannedDiscordUser {
+  id            String   @id @default(cuid())
+  discordId     String   @unique
+  reason        String?
+  bannedByUserId String?
+  createdAt     DateTime @default(now())
+
+  bannedByUser User? @relation(fields: [bannedByUserId], references: [id], onDelete: SetNull)
 }
