@@ -59,6 +59,13 @@ export async function GET() {
                 displayName: true,
                 name: true,
                 email: true,
+                selectedGuild: {
+                    select: {
+                        discordGuildId: true,
+                        discordGuildName: true,
+                        selectedAt: true,
+                    },
+                },
                 createdAt: true,
             },
         }),
@@ -139,6 +146,12 @@ export async function PATCH(request: NextRequest) {
             reviewsCount?: number;
             bonusCount?: number;
         }
+        | {
+            type?: "set-user";
+            userId?: string;
+            displayName?: string;
+            selectedGuildId?: string | null;
+        }
         | null;
 
     if (!payload?.type) {
@@ -200,6 +213,84 @@ export async function PATCH(request: NextRequest) {
         });
 
         return NextResponse.json({ access });
+    }
+
+    if (payload.type === "set-user") {
+        const userId = payload.userId?.trim();
+
+        if (!userId) {
+            return NextResponse.json({ error: "userId is required" }, { status: 400 });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true },
+        });
+
+        if (!user) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+
+        const nextDisplayName = (payload.displayName ?? "").trim() || null;
+
+        await prisma.user.update({
+            where: { id: userId },
+            data: { displayName: nextDisplayName },
+        });
+
+        const selectedGuildId = payload.selectedGuildId?.trim() ?? null;
+
+        if (selectedGuildId) {
+            const guild = await prisma.whitelistedGuild.findUnique({
+                where: { discordGuildId: selectedGuildId },
+                select: { discordGuildId: true, name: true },
+            });
+
+            if (!guild) {
+                return NextResponse.json(
+                    { error: "Selected guild is not whitelisted" },
+                    { status: 404 },
+                );
+            }
+
+            await prisma.selectedGuild.upsert({
+                where: { userId },
+                update: {
+                    discordGuildId: guild.discordGuildId,
+                    discordGuildName: guild.name,
+                    discordGuildIconUrl: null,
+                },
+                create: {
+                    userId,
+                    discordGuildId: guild.discordGuildId,
+                    discordGuildName: guild.name,
+                    discordGuildIconUrl: null,
+                },
+            });
+        } else {
+            await prisma.selectedGuild.deleteMany({ where: { userId } });
+        }
+
+        const updatedUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                discordId: true,
+                displayName: true,
+                name: true,
+                email: true,
+                selectedGuild: {
+                    select: {
+                        discordGuildId: true,
+                        discordGuildName: true,
+                        selectedAt: true,
+                    },
+                },
+                createdAt: true,
+            },
+        });
+
+        return NextResponse.json({ user: updatedUser });
     }
 
     const configPayload = payload as {
