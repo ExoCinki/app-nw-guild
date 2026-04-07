@@ -630,7 +630,13 @@ export default function PayoutClient() {
   }, [filteredEntries, currentPlayersPage]);
 
   if (loadingSessions) {
-    return <LoadingIndicator />;
+    return (
+      <div className="min-h-screen bg-slate-950 px-6 pb-6 pt-24 text-slate-100">
+        <div className="mx-auto max-w-7xl">
+          <LoadingIndicator />
+        </div>
+      </div>
+    );
   }
 
   return (
