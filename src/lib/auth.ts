@@ -32,9 +32,46 @@ export const authOptions: NextAuthOptions = {
     callbacks: {
         async session({ session, user }) {
             if (session.user) {
+                let discordId = user.discordId ?? null;
+                let displayName = user.displayName ?? null;
+
+                if (!discordId || !displayName) {
+                    const hydratedUser = await prisma.user.findUnique({
+                        where: { id: user.id },
+                        select: {
+                            displayName: true,
+                            discordId: true,
+                        },
+                    });
+
+                    displayName = displayName ?? hydratedUser?.displayName ?? null;
+                    discordId = discordId ?? hydratedUser?.discordId ?? null;
+                }
+
+                if (!discordId) {
+                    const discordAccount = await prisma.account.findFirst({
+                        where: {
+                            userId: user.id,
+                            provider: "discord",
+                        },
+                        select: {
+                            providerAccountId: true,
+                        },
+                    });
+
+                    if (discordAccount?.providerAccountId) {
+                        discordId = discordAccount.providerAccountId;
+
+                        await prisma.user.update({
+                            where: { id: user.id },
+                            data: { discordId },
+                        });
+                    }
+                }
+
                 session.user.id = user.id;
-                session.user.displayName = user.displayName;
-                session.user.discordId = user.discordId;
+                session.user.displayName = displayName;
+                session.user.discordId = discordId;
             }
 
             return session;

@@ -1,13 +1,11 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { GlobalAdminManager } from "@/components/global-admin-manager";
+import { getOwnerGuardStatus } from "@/lib/admin-access";
 
 export default async function AdminPage() {
-  const session = await getServerSession(authOptions);
-  const ownerDiscordId = process.env.OWNER_DISCORD_ID;
+  const ownerStatus = await getOwnerGuardStatus();
 
-  if (!session?.user?.discordId || session.user.discordId !== ownerDiscordId) {
+  if (ownerStatus.status !== "ok") {
     redirect("/");
   }
 

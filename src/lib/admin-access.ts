@@ -9,7 +9,7 @@ export async function getOwnerGuardStatus() {
     const session = await getServerSession(authOptions);
     const ownerDiscordId = process.env.OWNER_DISCORD_ID;
 
-    if (!session?.user?.id || !session.user.discordId) {
+    if (!session?.user?.id && !session?.user?.email) {
         return { status: "unauthorized" as const, session, ownerDiscordId };
     }
 
@@ -17,7 +17,49 @@ export async function getOwnerGuardStatus() {
         return { status: "misconfigured" as const, session, ownerDiscordId };
     }
 
-    if (session.user.discordId !== ownerDiscordId) {
+    const dbUser = await prisma.user.findFirst({
+        where: {
+            OR: [
+                ...(session.user.id ? [{ id: session.user.id }] : []),
+                ...(session.user.email ? [{ email: session.user.email }] : []),
+            ],
+        },
+        select: {
+            id: true,
+            discordId: true,
+        },
+    });
+
+    if (!dbUser) {
+        return { status: "unauthorized" as const, session, ownerDiscordId };
+    }
+
+    let effectiveDiscordId = dbUser.discordId;
+
+    if (!effectiveDiscordId) {
+        const discordAccount = await prisma.account.findFirst({
+            where: {
+                userId: dbUser.id,
+                provider: "discord",
+            },
+            select: {
+                providerAccountId: true,
+            },
+        });
+
+        if (discordAccount?.providerAccountId) {
+            effectiveDiscordId = discordAccount.providerAccountId;
+
+            await prisma.user.update({
+                where: { id: dbUser.id },
+                data: {
+                    discordId: effectiveDiscordId,
+                },
+            });
+        }
+    }
+
+    if (!effectiveDiscordId || effectiveDiscordId !== ownerDiscordId) {
         return { status: "forbidden" as const, session, ownerDiscordId };
     }
 
