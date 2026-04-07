@@ -32,6 +32,7 @@ function GlobalAdminsSection({
   const globalAdminUserIds = new Set(globalAdmins.map((ga) => ga.userId));
 
   const filteredUsers = users.filter((user) => {
+    if (globalAdminUserIds.has(user.id)) return false;
     const q = globalAdminSearchQuery.trim().toLowerCase();
     if (!q) return true;
     const label =
@@ -219,9 +220,17 @@ export function AdminAccessTab({
   const userById = new Map(users.map((u) => [u.id, u]));
   const guildById = new Map(guilds.map((g) => [g.discordGuildId, g]));
   const globalAdminUserIds = new Set(globalAdmins.map((ga) => ga.userId));
+  const usersWithScopedAccess = new Set(
+    accesses
+      .filter(
+        (item) => !selectedGuildId || item.discordGuildId === selectedGuildId,
+      )
+      .map((item) => item.userId),
+  );
 
   const filteredUsers = users.filter((user) => {
     if (globalAdminUserIds.has(user.id)) return false;
+    if (usersWithScopedAccess.has(user.id)) return false;
     const q = userSearchQuery.trim().toLowerCase();
     if (!q) return true;
     const label =
