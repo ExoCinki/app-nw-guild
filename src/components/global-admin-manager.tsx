@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LoadingIndicator } from "@/components/loading-indicator";
 import { WhitelistManager } from "@/components/whitelist-manager";
-import { AdminServersTab } from "@/components/admin/admin-servers-tab";
 import { AdminUsersTab } from "@/components/admin/admin-users-tab";
 import { AdminAccessTab } from "@/components/admin/admin-access-tab";
 import { AdminConfigurationTab } from "@/components/admin/admin-configuration-tab";
@@ -22,16 +21,9 @@ async function fetchAdminGlobalData() {
   return response.json() as Promise<AdminGlobalResponse>;
 }
 
-type Tab =
-  | "servers"
-  | "users"
-  | "access"
-  | "configuration"
-  | "bans"
-  | "whitelist";
+type Tab = "users" | "access" | "configuration" | "bans" | "whitelist";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "servers", label: "Serveurs" },
   { id: "users", label: "Users" },
   { id: "access", label: "Acces" },
   { id: "configuration", label: "Configuration" },
@@ -40,7 +32,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export function GlobalAdminManager() {
-  const [activeTab, setActiveTab] = useState<Tab>("servers");
+  const [activeTab, setActiveTab] = useState<Tab>("users");
 
   const query = useQuery({
     queryKey: ["admin-global"],
@@ -85,8 +77,6 @@ export function GlobalAdminManager() {
           </button>
         ))}
       </div>
-
-      {activeTab === "servers" ? <AdminServersTab guilds={guilds} /> : null}
 
       {activeTab === "users" ? (
         <AdminUsersTab users={users} guilds={guilds} />
