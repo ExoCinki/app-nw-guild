@@ -58,6 +58,7 @@ export function GlobalAdminManager() {
   const bans = query.data?.bans ?? [];
   const accesses = query.data?.accesses ?? [];
   const configurations = query.data?.configurations ?? [];
+  const globalAdmins = query.data?.globalAdmins ?? [];
 
   return (
     <div className="space-y-6">
@@ -83,7 +84,7 @@ export function GlobalAdminManager() {
       ) : null}
 
       {activeTab === "access" ? (
-        <AdminAccessTab users={users} guilds={guilds} accesses={accesses} />
+        <AdminAccessTab users={users} guilds={guilds} accesses={accesses} globalAdmins={globalAdmins} />
       ) : null}
 
       {activeTab === "configuration" ? (

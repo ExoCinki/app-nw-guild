@@ -42,7 +42,7 @@ export async function GET() {
         return ownerGuardResponse(ownerStatus.status);
     }
 
-    const [guilds, users, accesses, bans, configurations] = await Promise.all([
+    const [guilds, users, accesses, bans, configurations, globalAdmins] = await Promise.all([
         prisma.whitelistedGuild.findMany({
             orderBy: { createdAt: "desc" },
             select: {
@@ -80,6 +80,8 @@ export async function GET() {
                 canWritePayout: true,
                 canReadConfiguration: true,
                 canWriteConfiguration: true,
+                canReadArchives: true,
+                canWriteArchives: true,
                 updatedAt: true,
             },
         }),
@@ -109,9 +111,16 @@ export async function GET() {
                 updatedAt: true,
             },
         }),
+        prisma.globalAdmin.findMany({
+            orderBy: { createdAt: "desc" },
+            select: {
+                userId: true,
+                createdAt: true,
+            },
+        }),
     ]);
 
-    return NextResponse.json({ guilds, users, accesses, bans, configurations });
+    return NextResponse.json({ guilds, users, accesses, bans, configurations, globalAdmins });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -131,6 +140,8 @@ export async function PATCH(request: NextRequest) {
             canWritePayout?: boolean;
             canReadConfiguration?: boolean;
             canWriteConfiguration?: boolean;
+            canReadArchives?: boolean;
+            canWriteArchives?: boolean;
         }
         | {
             type?: "set-config";
@@ -152,6 +163,10 @@ export async function PATCH(request: NextRequest) {
             displayName?: string;
             selectedGuildId?: string | null;
         }
+        | {
+            type?: "add-global-admin" | "remove-global-admin";
+            userId?: string;
+        }
         | null;
 
     if (!payload?.type) {
@@ -169,6 +184,8 @@ export async function PATCH(request: NextRequest) {
         const normalizedCanWriteConfiguration = payload.canWriteConfiguration ?? true;
         const normalizedCanReadConfiguration =
             (payload.canReadConfiguration ?? true) || normalizedCanWriteConfiguration;
+        const normalizedCanWriteArchives = payload.canWriteArchives ?? true;
+        const normalizedCanReadArchives = (payload.canReadArchives ?? true) || normalizedCanWriteArchives;
 
         if (!userId || !guildId) {
             return NextResponse.json(
@@ -199,6 +216,8 @@ export async function PATCH(request: NextRequest) {
                 canWritePayout: normalizedCanWritePayout,
                 canReadConfiguration: normalizedCanReadConfiguration,
                 canWriteConfiguration: normalizedCanWriteConfiguration,
+                canReadArchives: normalizedCanReadArchives,
+                canWriteArchives: normalizedCanWriteArchives,
             },
             create: {
                 userId,
@@ -209,6 +228,8 @@ export async function PATCH(request: NextRequest) {
                 canWritePayout: normalizedCanWritePayout,
                 canReadConfiguration: normalizedCanReadConfiguration,
                 canWriteConfiguration: normalizedCanWriteConfiguration,
+                canReadArchives: normalizedCanReadArchives,
+                canWriteArchives: normalizedCanWriteArchives,
             },
         });
 
@@ -291,6 +312,35 @@ export async function PATCH(request: NextRequest) {
         });
 
         return NextResponse.json({ user: updatedUser });
+    }
+
+    if (payload.type === "add-global-admin" || payload.type === "remove-global-admin") {
+        const userId = (payload as { type?: string; userId?: string }).userId?.trim();
+
+        if (!userId) {
+            return NextResponse.json({ error: "userId is required" }, { status: 400 });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true },
+        });
+
+        if (!user) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
+        }
+
+        if (payload.type === "add-global-admin") {
+            await prisma.globalAdmin.upsert({
+                where: { userId },
+                update: {},
+                create: { userId },
+            });
+        } else {
+            await prisma.globalAdmin.deleteMany({ where: { userId } });
+        }
+
+        return NextResponse.json({ ok: true });
     }
 
     const configPayload = payload as {

@@ -20,6 +20,7 @@ model User {
   selectedGuild   SelectedGuild?
   guildAccesses   GuildUserAccess[]
   bansIssued      BannedDiscordUser[]
+  globalAdmin     GlobalAdmin?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -191,6 +192,8 @@ model GuildUserAccess {
   canWritePayout         Boolean  @default(true)
   canReadConfiguration   Boolean  @default(true)
   canWriteConfiguration  Boolean  @default(true)
+  canReadArchives        Boolean  @default(true)
+  canWriteArchives       Boolean  @default(true)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -198,6 +201,14 @@ model GuildUserAccess {
 
   @@unique([userId, discordGuildId])
   @@index([discordGuildId])
+}
+
+model GlobalAdmin {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model BannedDiscordUser {

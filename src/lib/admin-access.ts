@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export type GuildAccessScope = "roster" | "payout" | "configuration";
+export type GuildAccessScope = "roster" | "payout" | "configuration" | "archives";
 export type GuildAccessMode = "read" | "write";
 
 export async function getOwnerGuardStatus() {
@@ -22,6 +22,14 @@ export async function getOwnerGuardStatus() {
     }
 
     return { status: "ok" as const, session, ownerDiscordId };
+}
+
+export async function isGlobalAdmin(userId: string): Promise<boolean> {
+    const record = await prisma.globalAdmin.findUnique({
+        where: { userId },
+        select: { id: true },
+    });
+    return Boolean(record);
 }
 
 export async function isDiscordIdBanned(discordId: string) {
@@ -44,6 +52,11 @@ export async function hasGuildScopeAccess(params: {
         return true;
     }
 
+    const globalAdmin = await isGlobalAdmin(params.userId);
+    if (globalAdmin) {
+        return true;
+    }
+
     const access = await prisma.guildUserAccess.findUnique({
         where: {
             userId_discordGuildId: {
@@ -58,6 +71,8 @@ export async function hasGuildScopeAccess(params: {
             canWritePayout: true,
             canReadConfiguration: true,
             canWriteConfiguration: true,
+            canReadArchives: true,
+            canWriteArchives: true,
         },
     });
 
@@ -71,6 +86,10 @@ export async function hasGuildScopeAccess(params: {
 
     if (params.scope === "payout") {
         return params.mode === "read" ? access.canReadPayout : access.canWritePayout;
+    }
+
+    if (params.scope === "archives") {
+        return params.mode === "read" ? access.canReadArchives : access.canWriteArchives;
     }
 
     return params.mode === "read"

@@ -27,7 +27,14 @@ export type AdminAccess = {
     canWritePayout: boolean;
     canReadConfiguration: boolean;
     canWriteConfiguration: boolean;
+    canReadArchives: boolean;
+    canWriteArchives: boolean;
     updatedAt: string;
+};
+
+export type AdminGlobalAdmin = {
+    userId: string;
+    createdAt: string;
 };
 
 export type AdminBan = {
@@ -58,4 +65,5 @@ export type AdminGlobalResponse = {
     accesses: AdminAccess[];
     bans: AdminBan[];
     configurations: AdminConfiguration[];
+    globalAdmins: AdminGlobalAdmin[];
 };

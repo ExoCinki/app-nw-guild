@@ -59,13 +59,13 @@ async function resolveAdminGuild(
     const canAccessRoster = await hasGuildScopeAccess({
         userId: user.id,
         discordGuildId: guildId,
-        scope: "roster",
+        scope: "archives",
         mode,
         isOwner,
     });
 
     if (!canAccessRoster) {
-        return { error: "Access denied for roster module on this server", status: 403 as const };
+        return { error: "Access denied for archives module on this server", status: 403 as const };
     }
 
     // Check if user is admin (has admin role => TODO: verify admin status properly)

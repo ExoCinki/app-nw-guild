@@ -66,14 +66,14 @@ export async function GET(
     const canAccessRoster = await hasGuildScopeAccess({
         userId: user.id,
         discordGuildId: archive.discordGuildId,
-        scope: "roster",
+        scope: "archives",
         mode: "read",
         isOwner,
     });
 
     if (!canAccessRoster) {
         return NextResponse.json(
-            { error: "Access denied for roster module on this server" },
+            { error: "Access denied for archives module on this server" },
             { status: 403 },
         );
     }
