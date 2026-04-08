@@ -73,7 +73,7 @@ async function resolveAdminGuild(
     return { userId: user.id, guildId, isAdmin: true };
 }
 
-export async function POST(request: Request) {
+export async function POST() {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
@@ -100,13 +100,14 @@ export async function POST(request: Request) {
             selectedEventId: true,
             groups: {
                 select: {
+                    rosterIndex: true,
                     groupNumber: true,
                     name: true,
                     slots: {
                         select: { position: true, playerName: true, role: true },
                     },
                 },
-                orderBy: { groupNumber: "asc" },
+                orderBy: [{ rosterIndex: "asc" }, { groupNumber: "asc" }],
             },
         },
     });
@@ -153,7 +154,7 @@ export async function POST(request: Request) {
     });
 }
 
-export async function GET(request: Request) {
+export async function GET() {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {

@@ -216,6 +216,7 @@ export async function GET(request: NextRequest) {
                 discordGuildId: true,
                 apiKey: true,
                 channelId: true,
+                enableSecondRoster: true,
                 zooMemberRoleId: true,
                 zooMemberRoleName: true,
                 warsCount: true,
@@ -269,6 +270,7 @@ export async function PATCH(request: NextRequest) {
             guildId?: string;
             apiKey?: string;
             channelId?: string;
+            enableSecondRoster?: boolean;
             zooMemberRoleId?: string;
             zooMemberRoleName?: string;
             warsCount?: number;
@@ -490,6 +492,7 @@ export async function PATCH(request: NextRequest) {
         guildId?: string;
         apiKey?: string;
         channelId?: string;
+        enableSecondRoster?: boolean;
         zooMemberRoleId?: string;
         zooMemberRoleName?: string;
         warsCount?: number;
@@ -516,6 +519,7 @@ export async function PATCH(request: NextRequest) {
         select: {
             apiKey: true,
             channelId: true,
+            enableSecondRoster: true,
             zooMemberRoleId: true,
             zooMemberRoleName: true,
             warsCount: true,
@@ -533,6 +537,22 @@ export async function PATCH(request: NextRequest) {
     let vodsCount = existing?.vodsCount ?? 0;
     let reviewsCount = existing?.reviewsCount ?? 0;
     let bonusCount = existing?.bonusCount ?? 0;
+
+    const hasEnableSecondRoster = Object.prototype.hasOwnProperty.call(
+        configPayload,
+        "enableSecondRoster",
+    );
+
+    if (hasEnableSecondRoster && typeof configPayload.enableSecondRoster !== "boolean") {
+        return NextResponse.json(
+            { error: "enableSecondRoster must be a boolean" },
+            { status: 400 },
+        );
+    }
+
+    const enableSecondRoster = hasEnableSecondRoster
+        ? (configPayload.enableSecondRoster as boolean)
+        : (existing?.enableSecondRoster ?? false);
 
     try {
         if (Object.prototype.hasOwnProperty.call(configPayload, "warsCount")) {
@@ -601,6 +621,7 @@ export async function PATCH(request: NextRequest) {
             ...(Object.prototype.hasOwnProperty.call(configPayload, "channelId") && {
                 channelId: (configPayload.channelId ?? "").trim() || null,
             }),
+            enableSecondRoster,
             zooMemberRoleId,
             zooMemberRoleName,
             warsCount,
@@ -614,6 +635,7 @@ export async function PATCH(request: NextRequest) {
             discordGuildId: guildId,
             apiKey: (configPayload.apiKey ?? "").trim() || null,
             channelId: (configPayload.channelId ?? "").trim() || null,
+            enableSecondRoster,
             zooMemberRoleId,
             zooMemberRoleName,
             warsCount,

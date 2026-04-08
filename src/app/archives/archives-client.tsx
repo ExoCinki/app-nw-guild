@@ -27,6 +27,7 @@ type ArchiveDetail = {
   snapshot: {
     selectedEventId: string | null;
     groups: Array<{
+      rosterIndex?: number;
       groupNumber: number;
       name: string | null;
       slots: Array<{
@@ -122,6 +123,14 @@ export function ArchivesClient() {
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE,
   );
+
+  const snapshotGroups = detailQuery.data?.archive.snapshot.groups ?? [];
+  const rosterOneGroups = [...snapshotGroups]
+    .filter((group) => (group.rosterIndex ?? 1) === 1)
+    .sort((a, b) => a.groupNumber - b.groupNumber);
+  const rosterTwoGroups = [...snapshotGroups]
+    .filter((group) => (group.rosterIndex ?? 1) === 2)
+    .sort((a, b) => a.groupNumber - b.groupNumber);
 
   return (
     <div className="space-y-6">
@@ -226,46 +235,104 @@ export function ArchivesClient() {
             Archive details
           </h3>
 
-          <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-5">
-            {detailQuery.data.archive.snapshot.groups.map((group) => (
-              <div
-                key={group.groupNumber}
-                className="rounded-lg border border-slate-700/60 bg-slate-800/40 overflow-hidden"
-              >
-                <div className="border-b border-slate-700 bg-slate-900/60 px-3 py-2">
-                  <p className="truncate text-xs font-semibold text-slate-300">
-                    {group.name || `Group ${group.groupNumber}`}
-                  </p>
-                </div>
+          <div className="mt-6 space-y-6">
+            <div>
+              <h4 className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
+                Roster 1
+              </h4>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+                {rosterOneGroups.map((group) => (
+                  <div
+                    key={`r1-${group.groupNumber}`}
+                    className="overflow-hidden rounded-lg border border-slate-700/60 bg-slate-800/40"
+                  >
+                    <div className="border-b border-slate-700 bg-slate-900/60 px-3 py-2">
+                      <p className="truncate text-xs font-semibold text-slate-300">
+                        {group.name || `Group ${group.groupNumber}`}
+                      </p>
+                    </div>
 
-                <div className="space-y-1 p-2">
-                  {group.slots.map((slot) => (
-                    <div key={slot.position} className="text-xs">
-                      {slot.playerName ? (
-                        <div className="rounded-md border border-slate-700 bg-slate-900/40 px-2 py-1.5">
-                          <p className="truncate font-medium text-slate-100">
-                            {slot.playerName}
-                          </p>
-                          {slot.role && (
-                            <p
-                              className={`mt-0.5 text-[10px] font-medium ${
-                                ROLE_META[slot.role]?.color || "text-slate-400"
-                              }`}
-                            >
-                              {ROLE_META[slot.role]?.label || slot.role}
-                            </p>
+                    <div className="space-y-1 p-2">
+                      {group.slots.map((slot) => (
+                        <div key={slot.position} className="text-xs">
+                          {slot.playerName ? (
+                            <div className="rounded-md border border-slate-700 bg-slate-900/40 px-2 py-1.5">
+                              <p className="truncate font-medium text-slate-100">
+                                {slot.playerName}
+                              </p>
+                              {slot.role && (
+                                <p
+                                  className={`mt-0.5 text-[10px] font-medium ${
+                                    ROLE_META[slot.role]?.color ||
+                                    "text-slate-400"
+                                  }`}
+                                >
+                                  {ROLE_META[slot.role]?.label || slot.role}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded-md border border-slate-700/40 px-2 py-1.5 text-center italic text-slate-600">
+                              Empty
+                            </div>
                           )}
                         </div>
-                      ) : (
-                        <div className="rounded-md border border-slate-700/40 px-2 py-1.5 text-center italic text-slate-600">
-                          Empty
-                        </div>
-                      )}
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {rosterTwoGroups.length > 0 ? (
+              <div>
+                <h4 className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
+                  Roster 2
+                </h4>
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+                  {rosterTwoGroups.map((group) => (
+                    <div
+                      key={`r2-${group.groupNumber}`}
+                      className="overflow-hidden rounded-lg border border-slate-700/60 bg-slate-800/40"
+                    >
+                      <div className="border-b border-slate-700 bg-slate-900/60 px-3 py-2">
+                        <p className="truncate text-xs font-semibold text-slate-300">
+                          {group.name || `Group ${group.groupNumber}`}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1 p-2">
+                        {group.slots.map((slot) => (
+                          <div key={slot.position} className="text-xs">
+                            {slot.playerName ? (
+                              <div className="rounded-md border border-slate-700 bg-slate-900/40 px-2 py-1.5">
+                                <p className="truncate font-medium text-slate-100">
+                                  {slot.playerName}
+                                </p>
+                                {slot.role && (
+                                  <p
+                                    className={`mt-0.5 text-[10px] font-medium ${
+                                      ROLE_META[slot.role]?.color ||
+                                      "text-slate-400"
+                                    }`}
+                                  >
+                                    {ROLE_META[slot.role]?.label || slot.role}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="rounded-md border border-slate-700/40 px-2 py-1.5 text-center italic text-slate-600">
+                                Empty
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
-            ))}
+            ) : null}
           </div>
         </div>
       ) : null}

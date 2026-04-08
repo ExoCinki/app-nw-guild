@@ -5,7 +5,6 @@ import { faCheck, faPencil, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { LoadingIndicator } from "@/components/loading-indicator";
 import type {
   AdminConfiguration,
   AdminGuild,
@@ -48,6 +47,7 @@ type Props = {
 type EditableFieldKey =
   | "apiKey"
   | "channelId"
+  | "enableSecondRoster"
   | "zooMemberRoleId"
   | "warsCount"
   | "racesCount"
@@ -86,7 +86,10 @@ function EditButtons({
           aria-label="Confirm"
         >
           {isPending ? (
-            <LoadingIndicator />
+            <span
+              className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500/40 border-t-emerald-300"
+              aria-hidden="true"
+            />
           ) : (
             <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />
           )}
@@ -121,6 +124,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
 
   const [apiKey, setApiKey] = useState("");
   const [channelId, setChannelId] = useState("");
+  const [enableSecondRoster, setEnableSecondRoster] = useState(false);
   const [zooMemberRoleId, setZooMemberRoleId] = useState("");
   const [warsCount, setWarsCount] = useState("0");
   const [racesCount, setRacesCount] = useState("0");
@@ -155,6 +159,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
   useEffect(() => {
     setApiKey(selectedConfig?.apiKey ?? "");
     setChannelId(selectedConfig?.channelId ?? "");
+    setEnableSecondRoster(selectedConfig?.enableSecondRoster ?? false);
     setZooMemberRoleId(selectedConfig?.zooMemberRoleId ?? "");
     setWarsCount(String(selectedConfig?.warsCount ?? 0));
     setRacesCount(String(selectedConfig?.racesCount ?? 0));
@@ -170,6 +175,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
       guildId: string;
       apiKey: string;
       channelId: string;
+      enableSecondRoster: boolean;
       zooMemberRoleId: string;
       warsCount: number;
       racesCount: number;
@@ -210,6 +216,10 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     }
     if (field === "channelId") {
       setChannelId(selectedConfig?.channelId ?? "");
+      return;
+    }
+    if (field === "enableSecondRoster") {
+      setEnableSecondRoster(selectedConfig?.enableSecondRoster ?? false);
       return;
     }
     if (field === "zooMemberRoleId") {
@@ -284,6 +294,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
         guildId: resolvedConfigGuildId,
         apiKey,
         channelId,
+        enableSecondRoster,
         zooMemberRoleId,
         warsCount: parsedWars,
         racesCount: parsedRaces,
@@ -389,6 +400,46 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
                 setEditingField(null);
               }}
               onEdit={() => setEditingField("channelId")}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label
+            htmlFor="admin-cfg-enableSecondRoster"
+            className="mb-2 block text-sm font-medium text-slate-300"
+          >
+            Activer roster 2
+          </label>
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="admin-cfg-enableSecondRoster"
+              className="flex w-full items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+            >
+              <span>Afficher roster 2 sur la page roster</span>
+              <input
+                id="admin-cfg-enableSecondRoster"
+                type="checkbox"
+                checked={enableSecondRoster}
+                onChange={(e) => setEnableSecondRoster(e.target.checked)}
+                disabled={
+                  editingField !== "enableSecondRoster" ||
+                  pendingField === "enableSecondRoster"
+                }
+                className="h-4 w-4 accent-sky-500"
+              />
+            </label>
+            <EditButtons
+              isEditing={editingField === "enableSecondRoster"}
+              isPending={pendingField === "enableSecondRoster"}
+              onSave={() => {
+                void saveField("enableSecondRoster");
+              }}
+              onCancel={() => {
+                resetField("enableSecondRoster");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("enableSecondRoster")}
             />
           </div>
         </div>

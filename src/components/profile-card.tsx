@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   InlineLoadingIndicator,
@@ -95,7 +95,8 @@ async function setSelectedGuild(guildId: string): Promise<void> {
 export function ProfileCard() {
   const { data: session, status } = useSession();
   const queryClient = useQueryClient();
-  const [selectedGuildId, setSelectedGuildId] = useState<string>("");
+  const [manualSelectedGuildId, setManualSelectedGuildId] =
+    useState<string>("");
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -130,6 +131,27 @@ export function ProfileCard() {
 
   const isConnected = status === "authenticated";
   const user = meQuery.data?.user;
+  const guilds = useMemo(
+    () => whitelistedGuildsQuery.data?.guilds ?? [],
+    [whitelistedGuildsQuery.data?.guilds],
+  );
+  const persistedGuildId = selectedGuildQuery.data?.selectedGuildId ?? "";
+  const hasPersistedGuild =
+    Boolean(persistedGuildId) &&
+    guilds.some((guild) => guild.id === persistedGuildId);
+  const hasManualGuild =
+    Boolean(manualSelectedGuildId) &&
+    guilds.some((guild) => guild.id === manualSelectedGuildId);
+  const selectedGuildId =
+    guilds.length === 0
+      ? ""
+      : hasManualGuild
+        ? manualSelectedGuildId
+        : hasPersistedGuild
+          ? persistedGuildId
+          : guilds.length === 1
+            ? guilds[0].id
+            : "";
 
   useEffect(() => {
     if (meQuery.isError) {
@@ -152,44 +174,15 @@ export function ProfileCard() {
   }, [whitelistedGuildsQuery.error, whitelistedGuildsQuery.isError]);
 
   useEffect(() => {
-    const guilds = whitelistedGuildsQuery.data?.guilds ?? [];
-    const persistedGuildId = selectedGuildQuery.data?.selectedGuildId ?? "";
-
-    if (guilds.length === 0) {
-      setSelectedGuildId("");
-      return;
-    }
-
     if (guilds.length === 1) {
       const onlyGuildId = guilds[0].id;
-
-      if (selectedGuildId !== onlyGuildId) {
-        setSelectedGuildId(onlyGuildId);
-      }
-
       if (persistedGuildId !== onlyGuildId && !selectGuildMutation.isPending) {
         selectGuildMutation.mutate(onlyGuildId);
       }
-      return;
     }
+  }, [guilds, persistedGuildId, selectGuildMutation]);
 
-    if (
-      persistedGuildId &&
-      guilds.some((guild) => guild.id === persistedGuildId) &&
-      selectedGuildId !== persistedGuildId
-    ) {
-      setSelectedGuildId(persistedGuildId);
-    }
-  }, [
-    selectedGuildId,
-    selectedGuildQuery.data,
-    selectGuildMutation,
-    whitelistedGuildsQuery.data,
-  ]);
-
-  const selectedGuild = (whitelistedGuildsQuery.data?.guilds ?? []).find(
-    (guild) => guild.id === selectedGuildId,
-  );
+  const selectedGuild = guilds.find((guild) => guild.id === selectedGuildId);
 
   return (
     <section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
@@ -275,7 +268,7 @@ export function ProfileCard() {
                   <select
                     value={selectedGuildId}
                     onChange={(e) => {
-                      setSelectedGuildId(e.target.value);
+                      setManualSelectedGuildId(e.target.value);
                       if (e.target.value) {
                         selectGuildMutation.mutate(e.target.value);
                       }

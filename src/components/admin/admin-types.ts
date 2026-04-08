@@ -48,6 +48,7 @@ export type AdminConfiguration = {
     discordGuildId: string;
     apiKey: string | null;
     channelId: string | null;
+    enableSecondRoster: boolean;
     zooMemberRoleId: string | null;
     zooMemberRoleName: string | null;
     warsCount: number;
