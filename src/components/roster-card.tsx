@@ -573,42 +573,52 @@ function GroupCard({
         | RosterResponse
         | undefined;
       if (currentData && editingSlotPosition !== null) {
+        const updatedGroups =
+          rosterIndex === 1
+            ? currentData.roster.groups.map((g) =>
+                g.groupNumber === group.groupNumber
+                  ? {
+                      ...g,
+                      slots: g.slots.map((s) =>
+                        s.position === editingSlotPosition
+                          ? {
+                              ...s,
+                              playerName: trimmedName,
+                              role: editingRole,
+                            }
+                          : s,
+                      ),
+                    }
+                  : g,
+              )
+            : currentData.roster.groups;
+
+        const updatedSecondGroups =
+          rosterIndex === 2
+            ? currentData.roster.secondGroups.map((g) =>
+                g.groupNumber === group.groupNumber
+                  ? {
+                      ...g,
+                      slots: g.slots.map((s) =>
+                        s.position === editingSlotPosition
+                          ? {
+                              ...s,
+                              playerName: trimmedName,
+                              role: editingRole,
+                            }
+                          : s,
+                      ),
+                    }
+                  : g,
+              )
+            : currentData.roster.secondGroups;
+
         const updatedData: RosterResponse = {
           ...currentData,
           roster: {
             ...currentData.roster,
-            groups: currentData.roster.groups.map((g) =>
-              g.groupNumber === group.groupNumber
-                ? {
-                    ...g,
-                    slots: g.slots.map((s) =>
-                      s.position === editingSlotPosition
-                        ? {
-                            ...s,
-                            playerName: trimmedName,
-                            role: editingRole,
-                          }
-                        : s,
-                    ),
-                  }
-                : g,
-            ),
-            secondGroups: currentData.roster.secondGroups.map((g) =>
-              g.groupNumber === group.groupNumber
-                ? {
-                    ...g,
-                    slots: g.slots.map((s) =>
-                      s.position === editingSlotPosition
-                        ? {
-                            ...s,
-                            playerName: trimmedName,
-                            role: editingRole,
-                          }
-                        : s,
-                    ),
-                  }
-                : g,
-            ),
+            groups: updatedGroups,
+            secondGroups: updatedSecondGroups,
           },
         };
         queryClient.setQueryData(["roster"], updatedData);
@@ -876,24 +886,9 @@ function GroupCard({
                         "roster",
                       ]) as RosterResponse | undefined;
                       if (currentData) {
-                        const updatedData: RosterResponse = {
-                          ...currentData,
-                          roster: {
-                            ...currentData.roster,
-                            groups: currentData.roster.groups.map((g) =>
-                              g.groupNumber === group.groupNumber
-                                ? {
-                                    ...g,
-                                    slots: g.slots.map((s) =>
-                                      s.position === slot.position
-                                        ? { ...s, playerName: null, role: null }
-                                        : s,
-                                    ),
-                                  }
-                                : g,
-                            ),
-                            secondGroups: currentData.roster.secondGroups.map(
-                              (g) =>
+                        const updatedGroups =
+                          rosterIndex === 1
+                            ? currentData.roster.groups.map((g) =>
                                 g.groupNumber === group.groupNumber
                                   ? {
                                       ...g,
@@ -908,7 +903,35 @@ function GroupCard({
                                       ),
                                     }
                                   : g,
-                            ),
+                              )
+                            : currentData.roster.groups;
+
+                        const updatedSecondGroups =
+                          rosterIndex === 2
+                            ? currentData.roster.secondGroups.map((g) =>
+                                g.groupNumber === group.groupNumber
+                                  ? {
+                                      ...g,
+                                      slots: g.slots.map((s) =>
+                                        s.position === slot.position
+                                          ? {
+                                              ...s,
+                                              playerName: null,
+                                              role: null,
+                                            }
+                                          : s,
+                                      ),
+                                    }
+                                  : g,
+                              )
+                            : currentData.roster.secondGroups;
+
+                        const updatedData: RosterResponse = {
+                          ...currentData,
+                          roster: {
+                            ...currentData.roster,
+                            groups: updatedGroups,
+                            secondGroups: updatedSecondGroups,
                           },
                         };
                         queryClient.setQueryData(["roster"], updatedData);
@@ -1141,42 +1164,52 @@ export function RosterCard() {
         | RosterResponse
         | undefined;
       if (currentData) {
+        const updatedGroups =
+          input.rosterIndex === 1
+            ? currentData.roster.groups.map((g) =>
+                g.groupNumber === input.groupNumber
+                  ? {
+                      ...g,
+                      slots: g.slots.map((s) =>
+                        s.position === input.slotPosition
+                          ? {
+                              ...s,
+                              playerName: input.playerName,
+                              role: input.role ?? s.role,
+                            }
+                          : s,
+                      ),
+                    }
+                  : g,
+              )
+            : currentData.roster.groups;
+
+        const updatedSecondGroups =
+          input.rosterIndex === 2
+            ? currentData.roster.secondGroups.map((g) =>
+                g.groupNumber === input.groupNumber
+                  ? {
+                      ...g,
+                      slots: g.slots.map((s) =>
+                        s.position === input.slotPosition
+                          ? {
+                              ...s,
+                              playerName: input.playerName,
+                              role: input.role ?? s.role,
+                            }
+                          : s,
+                      ),
+                    }
+                  : g,
+              )
+            : currentData.roster.secondGroups;
+
         const updatedData: RosterResponse = {
           ...currentData,
           roster: {
             ...currentData.roster,
-            groups: currentData.roster.groups.map((g) =>
-              g.groupNumber === input.groupNumber && input.rosterIndex === 1
-                ? {
-                    ...g,
-                    slots: g.slots.map((s) =>
-                      s.position === input.slotPosition
-                        ? {
-                            ...s,
-                            playerName: input.playerName,
-                            role: input.role ?? s.role,
-                          }
-                        : s,
-                    ),
-                  }
-                : g,
-            ),
-            secondGroups: currentData.roster.secondGroups.map((g) =>
-              g.groupNumber === input.groupNumber && input.rosterIndex === 2
-                ? {
-                    ...g,
-                    slots: g.slots.map((s) =>
-                      s.position === input.slotPosition
-                        ? {
-                            ...s,
-                            playerName: input.playerName,
-                            role: input.role ?? s.role,
-                          }
-                        : s,
-                    ),
-                  }
-                : g,
-            ),
+            groups: updatedGroups,
+            secondGroups: updatedSecondGroups,
           },
         };
         queryClient.setQueryData(["roster"], updatedData);
