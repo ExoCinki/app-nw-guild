@@ -112,66 +112,156 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
         key={resolvedConfigGuildId}
         className="grid grid-cols-1 gap-3 sm:grid-cols-2"
       >
-        <input
-          name="apiKey"
-          defaultValue={selectedConfig?.apiKey ?? ""}
-          placeholder="API key"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="channelId"
-          defaultValue={selectedConfig?.channelId ?? ""}
-          placeholder="Channel ID"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="zooMemberRoleId"
-          defaultValue={selectedConfig?.zooMemberRoleId ?? ""}
-          placeholder="Zoo role ID"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="zooMemberRoleName"
-          defaultValue={selectedConfig?.zooMemberRoleName ?? ""}
-          placeholder="Zoo role name"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="warsCount"
-          defaultValue={String(selectedConfig?.warsCount ?? 0)}
-          placeholder="Wars points"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="racesCount"
-          defaultValue={String(selectedConfig?.racesCount ?? 0)}
-          placeholder="Races points"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="invasionsCount"
-          defaultValue={String(selectedConfig?.invasionsCount ?? 0)}
-          placeholder="Invasions points"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="vodsCount"
-          defaultValue={String(selectedConfig?.vodsCount ?? 0)}
-          placeholder="VODs points"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="reviewsCount"
-          defaultValue={String(selectedConfig?.reviewsCount ?? 0)}
-          placeholder="Reviews points"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
-        <input
-          name="bonusCount"
-          defaultValue={String(selectedConfig?.bonusCount ?? 0)}
-          placeholder="Bonus points"
-          className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm"
-        />
+        <div>
+          <label
+            htmlFor="cfg-apiKey"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            API key
+          </label>
+          <input
+            id="cfg-apiKey"
+            name="apiKey"
+            defaultValue={selectedConfig?.apiKey ?? ""}
+            placeholder="ex: sk_live_xxx"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-channelId"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Channel ID
+          </label>
+          <input
+            id="cfg-channelId"
+            name="channelId"
+            defaultValue={selectedConfig?.channelId ?? ""}
+            placeholder="ex: 123456789012345678"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-zooMemberRoleId"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Zoo role ID
+          </label>
+          <input
+            id="cfg-zooMemberRoleId"
+            name="zooMemberRoleId"
+            defaultValue={selectedConfig?.zooMemberRoleId ?? ""}
+            placeholder="ex: 123456789012345678"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-zooMemberRoleName"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Zoo role name
+          </label>
+          <input
+            id="cfg-zooMemberRoleName"
+            name="zooMemberRoleName"
+            defaultValue={selectedConfig?.zooMemberRoleName ?? ""}
+            placeholder="ex: ZOO 2.0"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-warsCount"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Points par War
+          </label>
+          <input
+            id="cfg-warsCount"
+            name="warsCount"
+            defaultValue={String(selectedConfig?.warsCount ?? 0)}
+            placeholder="0"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-racesCount"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Points par Race
+          </label>
+          <input
+            id="cfg-racesCount"
+            name="racesCount"
+            defaultValue={String(selectedConfig?.racesCount ?? 0)}
+            placeholder="0"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-invasionsCount"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Points par Invasion
+          </label>
+          <input
+            id="cfg-invasionsCount"
+            name="invasionsCount"
+            defaultValue={String(selectedConfig?.invasionsCount ?? 0)}
+            placeholder="0"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-vodsCount"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Points par VOD
+          </label>
+          <input
+            id="cfg-vodsCount"
+            name="vodsCount"
+            defaultValue={String(selectedConfig?.vodsCount ?? 0)}
+            placeholder="0"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-reviewsCount"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Points par Review
+          </label>
+          <input
+            id="cfg-reviewsCount"
+            name="reviewsCount"
+            defaultValue={String(selectedConfig?.reviewsCount ?? 0)}
+            placeholder="0"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor="cfg-bonusCount"
+            className="mb-1 block text-xs font-medium text-slate-400"
+          >
+            Points par Bonus
+          </label>
+          <input
+            id="cfg-bonusCount"
+            name="bonusCount"
+            defaultValue={String(selectedConfig?.bonusCount ?? 0)}
+            placeholder="0"
+            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+          />
+        </div>
       </form>
 
       <button
