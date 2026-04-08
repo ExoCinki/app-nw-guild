@@ -109,6 +109,39 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const removeAccessMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      guildId,
+    }: {
+      userId: string;
+      guildId: string;
+    }) => {
+      const response = await fetch("/api/admin/global", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          type: "remove-access",
+          userId,
+          guildId,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Unable to remove access rule");
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-global"] });
+      toast.success("Règle supprimée");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
   const formatPerm = (canRead: boolean, canWrite: boolean) => {
     if (!canRead) return "Aucun";
     return canWrite ? "Read/Write" : "Read";
@@ -457,7 +490,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                       {formatPerm(row.canReadArchives, row.canWriteArchives)}
                     </td>
                     <td className="px-3 py-2 text-emerald-300">Oui</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 space-x-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -468,7 +501,20 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                         }}
                         className="rounded bg-slate-700 px-2 py-1 hover:bg-slate-600"
                       >
-                        Charger
+                        Modifier
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          removeAccessMutation.mutate({
+                            userId: row.userId,
+                            guildId: row.discordGuildId,
+                          });
+                        }}
+                        disabled={removeAccessMutation.isPending}
+                        className="rounded bg-rose-800 px-2 py-1 hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        Supprimer
                       </button>
                     </td>
                   </tr>

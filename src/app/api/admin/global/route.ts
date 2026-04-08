@@ -260,6 +260,11 @@ export async function PATCH(request: NextRequest) {
             canWriteArchives?: boolean;
         }
         | {
+            type?: "remove-access";
+            userId?: string;
+            guildId?: string;
+        }
+        | {
             type?: "set-config";
             guildId?: string;
             apiKey?: string;
@@ -350,6 +355,27 @@ export async function PATCH(request: NextRequest) {
         });
 
         return NextResponse.json({ access });
+    }
+
+    if (payload.type === "remove-access") {
+        const userId = payload.userId?.trim();
+        const guildId = payload.guildId?.trim();
+
+        if (!userId || !guildId) {
+            return NextResponse.json(
+                { error: "userId and guildId are required" },
+                { status: 400 },
+            );
+        }
+
+        await prisma.guildUserAccess.deleteMany({
+            where: {
+                userId,
+                discordGuildId: guildId,
+            },
+        });
+
+        return NextResponse.json({ ok: true });
     }
 
     if (payload.type === "set-user") {
