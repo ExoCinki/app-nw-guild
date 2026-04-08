@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { withApiTiming } from "@/lib/api-timing";
 
 type RosterUpsertCreateInput = Parameters<typeof prisma.roster.upsert>[0]["create"];
 type ParticipantsCacheInput = RosterUpsertCreateInput["raidHelperParticipantsCache"];
@@ -256,6 +257,8 @@ export async function GET(request: Request) {
         );
     }
 
+    const apiKey = config.apiKey;
+
     if (!config.channelId) {
         return NextResponse.json(
             { error: "No channel ID configured for this server." },
@@ -288,9 +291,11 @@ export async function GET(request: Request) {
             }
         }
 
-        const eventRes = await fetch(`https://raid-helper.xyz/api/v4/events/${eventId}`, {
-            cache: "no-store",
-        });
+        const eventRes = await withApiTiming("GET /api/raid-helper-events event-detail", () =>
+            fetch(`https://raid-helper.xyz/api/v4/events/${eventId}`, {
+                cache: "no-store",
+            }),
+        );
 
         if (!eventRes.ok) {
             const body = (await eventRes.text().catch(() => "")).slice(0, 200);
@@ -357,18 +362,20 @@ export async function GET(request: Request) {
 
         const participantsCachedAt = new Date();
 
-        await prisma.roster.upsert({
-            where: { discordGuildId: guildId },
-            create: {
-                discordGuildId: guildId,
-                raidHelperParticipantsCache: mergedParticipantsCache,
-                raidHelperParticipantsCachedAt: participantsCachedAt,
-            },
-            update: {
-                raidHelperParticipantsCache: mergedParticipantsCache,
-                raidHelperParticipantsCachedAt: participantsCachedAt,
-            },
-        });
+        await withApiTiming("GET /api/raid-helper-events participants-cache-upsert", () =>
+            prisma.roster.upsert({
+                where: { discordGuildId: guildId },
+                create: {
+                    discordGuildId: guildId,
+                    raidHelperParticipantsCache: mergedParticipantsCache,
+                    raidHelperParticipantsCachedAt: participantsCachedAt,
+                },
+                update: {
+                    raidHelperParticipantsCache: mergedParticipantsCache,
+                    raidHelperParticipantsCachedAt: participantsCachedAt,
+                },
+            }),
+        );
 
         return NextResponse.json({
             participants,
@@ -389,14 +396,16 @@ export async function GET(request: Request) {
     }
 
     // Call RaidHelper API
-    const rhRes = await fetch(
-        `https://raid-helper.xyz/api/v4/servers/${guildId}/events`,
-        {
-            headers: {
-                Authorization: config.apiKey,
+    const rhRes = await withApiTiming("GET /api/raid-helper-events events-fetch", () =>
+        fetch(
+            `https://raid-helper.xyz/api/v4/servers/${guildId}/events`,
+            {
+                headers: {
+                    Authorization: apiKey,
+                },
+                cache: "no-store",
             },
-            cache: "no-store",
-        },
+        ),
     );
 
     if (!rhRes.ok) {
@@ -427,18 +436,20 @@ export async function GET(request: Request) {
 
     const eventsCachedAt = new Date();
 
-    await prisma.roster.upsert({
-        where: { discordGuildId: guildId },
-        create: {
-            discordGuildId: guildId,
-            raidHelperEventsCache: filteredEventsCache,
-            raidHelperEventsCachedAt: eventsCachedAt,
-        },
-        update: {
-            raidHelperEventsCache: filteredEventsCache,
-            raidHelperEventsCachedAt: eventsCachedAt,
-        },
-    });
+    await withApiTiming("GET /api/raid-helper-events events-cache-upsert", () =>
+        prisma.roster.upsert({
+            where: { discordGuildId: guildId },
+            create: {
+                discordGuildId: guildId,
+                raidHelperEventsCache: filteredEventsCache,
+                raidHelperEventsCachedAt: eventsCachedAt,
+            },
+            update: {
+                raidHelperEventsCache: filteredEventsCache,
+                raidHelperEventsCachedAt: eventsCachedAt,
+            },
+        }),
+    );
 
     return NextResponse.json({
         events: filtered,

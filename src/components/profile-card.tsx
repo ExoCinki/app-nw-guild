@@ -9,6 +9,8 @@ import {
   InlineLoadingIndicator,
   LoadingIndicator,
 } from "@/components/loading-indicator";
+import { queryPresets } from "@/lib/query-presets";
+import { apiFetch, apiFetchVoid } from "@/lib/http-client";
 
 type MeResponse = {
   user: {
@@ -32,64 +34,43 @@ type SelectedGuildResponse = {
 };
 
 async function getMe(): Promise<MeResponse> {
-  const response = await fetch("/api/me", {
-    method: "GET",
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(payload?.error ?? "Unable to load profile.");
-  }
-
-  return response.json() as Promise<MeResponse>;
+  return apiFetch<MeResponse>(
+    "/api/me",
+    { method: "GET" },
+    "Unable to load profile.",
+  );
 }
 
 async function getWhitelistedGuilds(): Promise<WhitelistedGuildsResponse> {
-  const response = await fetch("/api/guilds/whitelisted", {
-    method: "GET",
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(payload?.error ?? "Unable to load servers.");
-  }
-
-  return response.json() as Promise<WhitelistedGuildsResponse>;
+  return apiFetch<WhitelistedGuildsResponse>(
+    "/api/guilds/whitelisted",
+    { method: "GET" },
+    "Unable to load servers.",
+  );
 }
 
 async function getSelectedGuild(): Promise<SelectedGuildResponse> {
-  const response = await fetch("/api/selected-guild", {
-    method: "GET",
-    credentials: "include",
-  });
-
-  if (!response.ok) {
+  try {
+    return await apiFetch<SelectedGuildResponse>(
+      "/api/selected-guild",
+      { method: "GET" },
+      "Unable to load selected guild.",
+    );
+  } catch {
     return { selectedGuildId: null };
   }
-
-  return response.json() as Promise<SelectedGuildResponse>;
 }
 
 async function setSelectedGuild(guildId: string): Promise<void> {
-  const response = await fetch("/api/selected-guild", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ guildId }),
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(payload?.error ?? "Unable to save selection.");
-  }
+  await apiFetchVoid(
+    "/api/selected-guild",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ guildId }),
+    },
+    "Unable to save selection.",
+  );
 }
 
 export function ProfileCard() {
@@ -102,34 +83,28 @@ export function ProfileCard() {
     queryKey: ["me"],
     queryFn: getMe,
     enabled: status === "authenticated",
-    staleTime: 10 * 60 * 1000, // 10 minutes - user data changes rarely
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    ...queryPresets.longLived,
   });
 
   const whitelistedGuildsQuery = useQuery({
     queryKey: ["guilds", "whitelisted"],
     queryFn: getWhitelistedGuilds,
     enabled: status === "authenticated",
-    staleTime: 10 * 60 * 1000, // 10 minutes - guilds list changes rarely
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    ...queryPresets.longLived,
   });
 
   const selectedGuildQuery = useQuery({
     queryKey: ["selected-guild"],
     queryFn: getSelectedGuild,
     enabled: status === "authenticated",
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    ...queryPresets.mediumLived,
   });
 
   const selectGuildMutation = useMutation({
     mutationFn: setSelectedGuild,
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success("Server selected.");
-      await queryClient.invalidateQueries({ queryKey: ["selected-guild"] });
+      void queryClient.invalidateQueries({ queryKey: ["selected-guild"] });
     },
     onError: (error) => {
       const message =

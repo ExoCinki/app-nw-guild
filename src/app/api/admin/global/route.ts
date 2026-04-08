@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAdminGuardStatus } from "@/lib/admin-access";
+import { withApiTiming } from "@/lib/api-timing";
 
 export const dynamic = "force-dynamic";
 
@@ -154,88 +155,94 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Guild is not whitelisted" }, { status: 404 });
         }
 
-        const { roles, rolesError } = await getDiscordGuildRoles(guildId);
+        const { roles, rolesError } = await withApiTiming(
+            "GET /api/admin/global?type=guild-roles",
+            () => getDiscordGuildRoles(guildId),
+        );
         return NextResponse.json({ roles, rolesError });
     }
 
-    const [guilds, users, accesses, bans, configurations, globalAdmins] = await Promise.all([
-        prisma.whitelistedGuild.findMany({
-            orderBy: { createdAt: "desc" },
-            select: {
-                discordGuildId: true,
-                name: true,
-                createdAt: true,
-            },
-        }),
-        prisma.user.findMany({
-            orderBy: { createdAt: "desc" },
-            select: {
-                id: true,
-                discordId: true,
-                displayName: true,
-                name: true,
-                email: true,
-                selectedGuild: {
-                    select: {
-                        discordGuildId: true,
-                        discordGuildName: true,
-                        selectedAt: true,
-                    },
+    const [guilds, users, accesses, bans, configurations, globalAdmins] = await withApiTiming(
+        "GET /api/admin/global",
+        () => Promise.all([
+            prisma.whitelistedGuild.findMany({
+                orderBy: { createdAt: "desc" },
+                select: {
+                    discordGuildId: true,
+                    name: true,
+                    createdAt: true,
                 },
-                createdAt: true,
-            },
-        }),
-        prisma.guildUserAccess.findMany({
-            orderBy: { updatedAt: "desc" },
-            select: {
-                userId: true,
-                discordGuildId: true,
-                canReadRoster: true,
-                canWriteRoster: true,
-                canReadPayout: true,
-                canWritePayout: true,
-                canReadConfiguration: true,
-                canWriteConfiguration: true,
-                canReadArchives: true,
-                canWriteArchives: true,
-                updatedAt: true,
-            },
-        }),
-        prisma.bannedDiscordUser.findMany({
-            orderBy: { createdAt: "desc" },
-            select: {
-                discordId: true,
-                reason: true,
-                createdAt: true,
-                bannedByUserId: true,
-            },
-        }),
-        prisma.guildConfiguration.findMany({
-            orderBy: { updatedAt: "desc" },
-            select: {
-                discordGuildId: true,
-                apiKey: true,
-                channelId: true,
-                enableSecondRoster: true,
-                zooMemberRoleId: true,
-                zooMemberRoleName: true,
-                warsCount: true,
-                racesCount: true,
-                invasionsCount: true,
-                vodsCount: true,
-                reviewsCount: true,
-                bonusCount: true,
-                updatedAt: true,
-            },
-        }),
-        prisma.globalAdmin.findMany({
-            orderBy: { createdAt: "desc" },
-            select: {
-                userId: true,
-                createdAt: true,
-            },
-        }),
-    ]);
+            }),
+            prisma.user.findMany({
+                orderBy: { createdAt: "desc" },
+                select: {
+                    id: true,
+                    discordId: true,
+                    displayName: true,
+                    name: true,
+                    email: true,
+                    selectedGuild: {
+                        select: {
+                            discordGuildId: true,
+                            discordGuildName: true,
+                            selectedAt: true,
+                        },
+                    },
+                    createdAt: true,
+                },
+            }),
+            prisma.guildUserAccess.findMany({
+                orderBy: { updatedAt: "desc" },
+                select: {
+                    userId: true,
+                    discordGuildId: true,
+                    canReadRoster: true,
+                    canWriteRoster: true,
+                    canReadPayout: true,
+                    canWritePayout: true,
+                    canReadConfiguration: true,
+                    canWriteConfiguration: true,
+                    canReadArchives: true,
+                    canWriteArchives: true,
+                    updatedAt: true,
+                },
+            }),
+            prisma.bannedDiscordUser.findMany({
+                orderBy: { createdAt: "desc" },
+                select: {
+                    discordId: true,
+                    reason: true,
+                    createdAt: true,
+                    bannedByUserId: true,
+                },
+            }),
+            prisma.guildConfiguration.findMany({
+                orderBy: { updatedAt: "desc" },
+                select: {
+                    discordGuildId: true,
+                    apiKey: true,
+                    channelId: true,
+                    enableSecondRoster: true,
+                    zooMemberRoleId: true,
+                    zooMemberRoleName: true,
+                    warsCount: true,
+                    racesCount: true,
+                    invasionsCount: true,
+                    vodsCount: true,
+                    reviewsCount: true,
+                    bonusCount: true,
+                    updatedAt: true,
+                },
+            }),
+            prisma.globalAdmin.findMany({
+                orderBy: { createdAt: "desc" },
+                select: {
+                    userId: true,
+                    createdAt: true,
+                },
+            }),
+        ]),
+    );
 
     return NextResponse.json({ guilds, users, accesses, bans, configurations, globalAdmins });
 }

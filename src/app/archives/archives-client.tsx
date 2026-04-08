@@ -11,6 +11,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { LoadingIndicator } from "@/components/loading-indicator";
+import { queryPresets } from "@/lib/query-presets";
+import { apiFetch } from "@/lib/http-client";
 
 type Archive = {
   id: string;
@@ -40,35 +42,21 @@ type ArchiveDetail = {
 };
 
 async function fetchArchives(): Promise<{ archives: Archive[] }> {
-  const res = await fetch("/api/roster/archive", {
-    credentials: "include",
-  });
-
-  if (!res.ok) {
-    const err = (await res.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(err?.error ?? "Unable to load archives.");
-  }
-
-  return res.json();
+  return apiFetch<{ archives: Archive[] }>(
+    "/api/roster/archive",
+    { method: "GET" },
+    "Unable to load archives.",
+  );
 }
 
 async function fetchArchiveDetail(
   id: string,
 ): Promise<{ archive: ArchiveDetail }> {
-  const res = await fetch(`/api/roster/archive/${id}`, {
-    credentials: "include",
-  });
-
-  if (!res.ok) {
-    const err = (await res.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(err?.error ?? "Unable to load archive.");
-  }
-
-  return res.json();
+  return apiFetch<{ archive: ArchiveDetail }>(
+    `/api/roster/archive/${id}`,
+    { method: "GET" },
+    "Unable to load archive.",
+  );
 }
 
 const ROLE_META: Record<string, { label: string; color: string }> = {
@@ -94,6 +82,7 @@ export function ArchivesClient() {
     queryKey: ["roster-archives"],
     queryFn: fetchArchives,
     retry: false,
+    ...queryPresets.mediumLived,
   });
 
   const detailQuery = useQuery({
@@ -101,6 +90,7 @@ export function ArchivesClient() {
     queryFn: () => fetchArchiveDetail(selectedArchiveId!),
     enabled: Boolean(selectedArchiveId),
     retry: false,
+    ...queryPresets.mediumLived,
   });
 
   if (archivesQuery.isLoading) {

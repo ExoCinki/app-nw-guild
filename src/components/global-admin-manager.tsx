@@ -10,16 +10,15 @@ import { AdminGlobalAdminsTab } from "@/components/admin/admin-global-admins-tab
 import { AdminConfigurationTab } from "@/components/admin/admin-configuration-tab";
 import { AdminBansTab } from "@/components/admin/admin-bans-tab";
 import type { AdminGlobalResponse } from "@/components/admin/admin-types";
+import { queryPresets } from "@/lib/query-presets";
+import { apiFetch } from "@/lib/http-client";
 
 async function fetchAdminGlobalData() {
-  const response = await fetch("/api/admin/global", { credentials: "include" });
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(payload?.error ?? "Unable to load admin data");
-  }
-  return response.json() as Promise<AdminGlobalResponse>;
+  return apiFetch<AdminGlobalResponse>(
+    "/api/admin/global",
+    { method: "GET" },
+    "Unable to load admin data",
+  );
 }
 
 type Tab =
@@ -45,9 +44,7 @@ export function GlobalAdminManager({ isOwner }: { isOwner: boolean }) {
   const query = useQuery({
     queryKey: ["admin-global"],
     queryFn: fetchAdminGlobalData,
-    staleTime: 2 * 60 * 1000, // 2 minutes - admin data is less sensitive
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    ...queryPresets.shortLived,
   });
 
   if (query.isLoading) {

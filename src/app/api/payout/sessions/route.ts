@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
 import { publishLiveUpdate } from "@/lib/live-updates";
+import { withApiTiming } from "@/lib/api-timing";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,13 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        const sessions = await prisma.payoutSession.findMany({
-            where: { discordGuildId: resolved.guildId },
-            include: { entries: { orderBy: { displayName: "asc" } } },
-            orderBy: { createdAt: "desc" },
-        });
+        const sessions = await withApiTiming("GET /api/payout/sessions", () =>
+            prisma.payoutSession.findMany({
+                where: { discordGuildId: resolved.guildId },
+                include: { entries: { orderBy: { displayName: "asc" } } },
+                orderBy: { createdAt: "desc" },
+            }),
+        );
 
         return NextResponse.json(sessions);
     } catch (error) {

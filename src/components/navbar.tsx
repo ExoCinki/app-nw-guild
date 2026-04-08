@@ -5,6 +5,8 @@ import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { queryPresets } from "@/lib/query-presets";
+import { apiFetch } from "@/lib/http-client";
 
 type SelectedGuildResponse = {
   selectedGuildId: string | null;
@@ -16,19 +18,18 @@ type SelectedGuildResponse = {
 };
 
 async function getSelectedGuild(): Promise<SelectedGuildResponse> {
-  const response = await fetch("/api/selected-guild", {
-    method: "GET",
-    credentials: "include",
-  });
-
-  if (!response.ok) {
+  try {
+    return await apiFetch<SelectedGuildResponse>(
+      "/api/selected-guild",
+      { method: "GET" },
+      "Unable to load selected guild.",
+    );
+  } catch {
     return {
       selectedGuildId: null,
       selectedGuild: null,
     };
   }
-
-  return response.json() as Promise<SelectedGuildResponse>;
 }
 
 export function Navbar() {
@@ -39,9 +40,7 @@ export function Navbar() {
     queryKey: ["selected-guild"],
     queryFn: getSelectedGuild,
     enabled: status === "authenticated",
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    ...queryPresets.mediumLived,
   });
 
   const isOwner = Boolean(session?.user?.isOwner);

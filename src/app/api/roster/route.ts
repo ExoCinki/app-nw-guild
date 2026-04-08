@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { hasGuildScopeAccess, type GuildAccessMode } from "@/lib/admin-access";
 import { publishLiveUpdate } from "@/lib/live-updates";
+import { withApiTiming } from "@/lib/api-timing";
 
 export const dynamic = "force-dynamic";
 
@@ -135,28 +136,31 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const [dbRoster, guildConfiguration] = await Promise.all([
-        prisma.roster.findUnique({
-            where: { discordGuildId: resolved.guildId },
-            select: {
-                selectedEventId: true,
-                groups: {
-                    select: {
-                        rosterIndex: true,
-                        groupNumber: true,
-                        name: true,
-                        slots: {
-                            select: { position: true, playerName: true, role: true },
+    const [dbRoster, guildConfiguration] = await withApiTiming(
+        "GET /api/roster",
+        () => Promise.all([
+            prisma.roster.findUnique({
+                where: { discordGuildId: resolved.guildId },
+                select: {
+                    selectedEventId: true,
+                    groups: {
+                        select: {
+                            rosterIndex: true,
+                            groupNumber: true,
+                            name: true,
+                            slots: {
+                                select: { position: true, playerName: true, role: true },
+                            },
                         },
                     },
                 },
-            },
-        }),
-        prisma.guildConfiguration.findUnique({
-            where: { discordGuildId: resolved.guildId },
-            select: { enableSecondRoster: true },
-        }),
-    ]);
+            }),
+            prisma.guildConfiguration.findUnique({
+                where: { discordGuildId: resolved.guildId },
+                select: { enableSecondRoster: true },
+            }),
+        ]),
+    );
 
     const enableSecondRoster = guildConfiguration?.enableSecondRoster ?? false;
 
@@ -259,19 +263,22 @@ export async function POST(request: Request) {
             ? SECONDARY_ROSTER_INDEX
             : PRIMARY_ROSTER_INDEX;
 
-    const otherRosterGroups = await prisma.rosterGroup.findMany({
-        where: {
-            rosterId: roster.id,
-            rosterIndex: otherRosterIndex,
-        },
-        select: {
-            slots: {
-                select: {
-                    playerName: true,
+    const otherRosterGroups = await withApiTiming(
+        "POST /api/roster conflict-check",
+        () => prisma.rosterGroup.findMany({
+            where: {
+                rosterId: roster.id,
+                rosterIndex: otherRosterIndex,
+            },
+            select: {
+                slots: {
+                    select: {
+                        playerName: true,
+                    },
                 },
             },
-        },
-    });
+        }),
+    );
 
     const otherRosterPlayerKeys = new Set(
         otherRosterGroups
@@ -320,46 +327,50 @@ export async function POST(request: Request) {
     });
 
     // Upsert all slots
-    await Promise.all(
-        payload.slots.map((slot) =>
-            prisma.rosterSlot.upsert({
-                where: {
-                    groupId_position: {
+    await withApiTiming("POST /api/roster slots-upsert", () =>
+        Promise.all(
+            payload.slots.map((slot) =>
+                prisma.rosterSlot.upsert({
+                    where: {
+                        groupId_position: {
+                            groupId: group.id,
+                            position: slot.position,
+                        },
+                    },
+                    create: {
                         groupId: group.id,
                         position: slot.position,
+                        playerName: slot.playerName?.trim() || null,
+                        role: slot.playerName?.trim() ? slot.role || null : null,
                     },
-                },
-                create: {
-                    groupId: group.id,
-                    position: slot.position,
-                    playerName: slot.playerName?.trim() || null,
-                    role: slot.playerName?.trim() ? slot.role || null : null,
-                },
-                update: {
-                    playerName: slot.playerName?.trim() || null,
-                    role: slot.playerName?.trim() ? slot.role || null : null,
-                },
-            }),
+                    update: {
+                        playerName: slot.playerName?.trim() || null,
+                        role: slot.playerName?.trim() ? slot.role || null : null,
+                    },
+                }),
+            ),
         ),
     );
 
     // Return full updated roster
-    const dbRoster = await prisma.roster.findUnique({
-        where: { discordGuildId: resolved.guildId },
-        select: {
-            selectedEventId: true,
-            groups: {
-                select: {
-                    rosterIndex: true,
-                    groupNumber: true,
-                    name: true,
-                    slots: {
-                        select: { position: true, playerName: true, role: true },
+    const dbRoster = await withApiTiming("POST /api/roster reload", () =>
+        prisma.roster.findUnique({
+            where: { discordGuildId: resolved.guildId },
+            select: {
+                selectedEventId: true,
+                groups: {
+                    select: {
+                        rosterIndex: true,
+                        groupNumber: true,
+                        name: true,
+                        slots: {
+                            select: { position: true, playerName: true, role: true },
+                        },
                     },
                 },
             },
-        },
-    });
+        }),
+    );
 
     publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
 
@@ -398,29 +409,31 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const roster = await prisma.roster.upsert({
-        where: { discordGuildId: resolved.guildId },
-        create: {
-            discordGuildId: resolved.guildId,
-            selectedEventId: (payload.selectedEventId ?? "").trim() || null,
-        },
-        update: {
-            selectedEventId: (payload.selectedEventId ?? "").trim() || null,
-        },
-        select: {
-            selectedEventId: true,
-            groups: {
-                select: {
-                    rosterIndex: true,
-                    groupNumber: true,
-                    name: true,
-                    slots: {
-                        select: { position: true, playerName: true, role: true },
+    const roster = await withApiTiming("PATCH /api/roster", () =>
+        prisma.roster.upsert({
+            where: { discordGuildId: resolved.guildId },
+            create: {
+                discordGuildId: resolved.guildId,
+                selectedEventId: (payload.selectedEventId ?? "").trim() || null,
+            },
+            update: {
+                selectedEventId: (payload.selectedEventId ?? "").trim() || null,
+            },
+            select: {
+                selectedEventId: true,
+                groups: {
+                    select: {
+                        rosterIndex: true,
+                        groupNumber: true,
+                        name: true,
+                        slots: {
+                            select: { position: true, playerName: true, role: true },
+                        },
                     },
                 },
             },
-        },
-    });
+        }),
+    );
 
     const guildConfiguration = await prisma.guildConfiguration.findUnique({
         where: { discordGuildId: resolved.guildId },
@@ -461,37 +474,42 @@ export async function DELETE(request: Request) {
     }
 
     // Vide tous les slots (playerName + role) sans supprimer les groupes
-    await prisma.rosterSlot.updateMany({
-        where: {
-            group: {
-                roster: { discordGuildId: resolved.guildId },
+    await withApiTiming("DELETE /api/roster clear-slots", () =>
+        prisma.rosterSlot.updateMany({
+            where: {
+                group: {
+                    roster: { discordGuildId: resolved.guildId },
+                },
             },
-        },
-        data: { playerName: null, role: null },
-    });
+            data: { playerName: null, role: null },
+        }),
+    );
 
-    const [dbRoster, guildConfiguration] = await Promise.all([
-        prisma.roster.findUnique({
-            where: { discordGuildId: resolved.guildId },
-            select: {
-                selectedEventId: true,
-                groups: {
-                    select: {
-                        rosterIndex: true,
-                        groupNumber: true,
-                        name: true,
-                        slots: {
-                            select: { position: true, playerName: true, role: true },
+    const [dbRoster, guildConfiguration] = await withApiTiming(
+        "DELETE /api/roster reload",
+        () => Promise.all([
+            prisma.roster.findUnique({
+                where: { discordGuildId: resolved.guildId },
+                select: {
+                    selectedEventId: true,
+                    groups: {
+                        select: {
+                            rosterIndex: true,
+                            groupNumber: true,
+                            name: true,
+                            slots: {
+                                select: { position: true, playerName: true, role: true },
+                            },
                         },
                     },
                 },
-            },
-        }),
-        prisma.guildConfiguration.findUnique({
-            where: { discordGuildId: resolved.guildId },
-            select: { enableSecondRoster: true },
-        }),
-    ]);
+            }),
+            prisma.guildConfiguration.findUnique({
+                where: { discordGuildId: resolved.guildId },
+                select: { enableSecondRoster: true },
+            }),
+        ]),
+    );
 
     const enableSecondRoster = guildConfiguration?.enableSecondRoster ?? false;
 

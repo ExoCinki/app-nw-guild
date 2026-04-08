@@ -9,6 +9,8 @@ import type {
   AdminConfiguration,
   AdminGuild,
 } from "@/components/admin/admin-types";
+import { queryPresets } from "@/lib/query-presets";
+import { apiFetch } from "@/lib/http-client";
 
 type AdminGuildRolesResponse = {
   roles: Array<{
@@ -22,21 +24,11 @@ type AdminGuildRolesResponse = {
 async function fetchAdminGuildRoles(
   guildId: string,
 ): Promise<AdminGuildRolesResponse> {
-  const response = await fetch(
+  return apiFetch<AdminGuildRolesResponse>(
     `/api/admin/global?type=guild-roles&guildId=${encodeURIComponent(guildId)}`,
-    {
-      credentials: "include",
-    },
+    { method: "GET" },
+    "Unable to load roles",
   );
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(body?.error ?? "Unable to load roles");
-  }
-
-  return response.json() as Promise<AdminGuildRolesResponse>;
 }
 
 type Props = {
@@ -154,9 +146,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     queryKey: ["admin-global-guild-roles", resolvedConfigGuildId],
     queryFn: () => fetchAdminGuildRoles(resolvedConfigGuildId),
     enabled: Boolean(resolvedConfigGuildId),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    ...queryPresets.mediumLived,
   });
 
   useEffect(() => {
@@ -187,22 +177,18 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
       reviewsCount: number;
       bonusCount: number;
     }) => {
-      const response = await fetch("/api/admin/global", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ type: "set-config", ...payload }),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(body?.error ?? "Unable to save configuration");
-      }
-      return response.json();
+      return apiFetch<unknown>(
+        "/api/admin/global",
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "set-config", ...payload }),
+        },
+        "Unable to save configuration",
+      );
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-global"] });
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin-global"] });
       toast.success("Configuration updated");
     },
     onError: (error: Error) => toast.error(error.message),

@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { InlineLoadingIndicator } from "@/components/loading-indicator";
+import { ApiError, apiFetch, apiFetchVoid } from "@/lib/http-client";
+import { queryPresets } from "@/lib/query-presets";
 
 type WhitelistGuild = {
   discordGuildId: string;
@@ -16,58 +18,42 @@ type WhitelistResponse = {
 };
 
 async function getWhitelist(): Promise<WhitelistResponse> {
-  const response = await fetch("/api/whitelist", {
-    method: "GET",
-    credentials: "include",
-  });
-
-  if (response.status === 403) {
-    return { guilds: [] };
+  try {
+    return await apiFetch<WhitelistResponse>(
+      "/api/whitelist",
+      { method: "GET" },
+      "Unable to load whitelist.",
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      return { guilds: [] };
+    }
+    throw error;
   }
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(payload?.error ?? "Unable to load whitelist.");
-  }
-
-  return response.json() as Promise<WhitelistResponse>;
 }
 
 async function addWhitelistGuild(payload: { guildId: string; name?: string }) {
-  const response = await fetch("/api/whitelist", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  await apiFetchVoid(
+    "/api/whitelist",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
     },
-    credentials: "include",
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorPayload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(errorPayload?.error ?? "Unable to add whitelist entry.");
-  }
+    "Unable to add whitelist entry.",
+  );
 }
 
 async function removeWhitelistGuild(guildId: string) {
-  const response = await fetch(
+  await apiFetchVoid(
     `/api/whitelist?guildId=${encodeURIComponent(guildId)}`,
     {
       method: "DELETE",
-      credentials: "include",
     },
+    "Unable to remove whitelist entry.",
   );
-
-  if (!response.ok) {
-    const errorPayload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(errorPayload?.error ?? "Unable to remove whitelist entry.");
-  }
 }
 
 export function WhitelistManager() {
@@ -79,18 +65,16 @@ export function WhitelistManager() {
     queryKey: ["whitelist"],
     queryFn: getWhitelist,
     retry: false,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
+    ...queryPresets.mediumLived,
   });
 
   const addWhitelistMutation = useMutation({
     mutationFn: addWhitelistGuild,
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success("Server added to whitelist.");
       setGuildIdInput("");
       setGuildNameInput("");
-      await queryClient.invalidateQueries({ queryKey: ["whitelist"] });
+      void queryClient.invalidateQueries({ queryKey: ["whitelist"] });
     },
     onError: (error) => {
       const message =
@@ -101,9 +85,9 @@ export function WhitelistManager() {
 
   const removeWhitelistMutation = useMutation({
     mutationFn: removeWhitelistGuild,
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success("Server removed from whitelist.");
-      await queryClient.invalidateQueries({ queryKey: ["whitelist"] });
+      void queryClient.invalidateQueries({ queryKey: ["whitelist"] });
     },
     onError: (error) => {
       const message =
@@ -199,7 +183,7 @@ export function WhitelistManager() {
               </div>
               <button
                 type="button"
-                className="ml-2 rounded-md border border-rose-500 px-3 py-1 text-xs font-medium text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50 inline-flex items-center gap-1"
+                className="ml-2 inline-flex items-center gap-1 rounded-md border border-rose-500 px-3 py-1 text-xs font-medium text-rose-300 transition hover:bg-rose-500/10 disabled:opacity-50"
                 onClick={() => {
                   removeWhitelistMutation.mutate(guild.discordGuildId);
                 }}

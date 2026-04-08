@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
 import { publishLiveUpdate } from "@/lib/live-updates";
+import { withApiTiming } from "@/lib/api-timing";
 
 export const dynamic = "force-dynamic";
 
@@ -32,10 +33,12 @@ export async function GET(
             );
         }
 
-        const payoutSession = await prisma.payoutSession.findFirst({
-            where: { id, discordGuildId: resolved.guildId },
-            include: { entries: { orderBy: { displayName: "asc" } } },
-        });
+        const payoutSession = await withApiTiming("GET /api/payout/sessions/[id]", () =>
+            prisma.payoutSession.findFirst({
+                where: { id, discordGuildId: resolved.guildId },
+                include: { entries: { orderBy: { displayName: "asc" } } },
+            }),
+        );
 
         if (!payoutSession) {
             return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -109,19 +112,21 @@ export async function PATCH(
             );
         }
 
-        const payoutSession = await prisma.payoutSession.update({
-            where: { id },
-            data: {
-                ...(payload.goldPool !== undefined && { goldPool: payload.goldPool }),
-                ...(payload.status !== undefined && { status: payload.status }),
-                ...(payload.name !== undefined && { name: payload.name }),
-                ...(payload.isLocked !== undefined && {
-                    isLocked: payload.isLocked,
-                    lockedByUserId: payload.isLocked ? dbUser.id : null,
-                }),
-            },
-            include: { entries: { orderBy: { displayName: "asc" } } },
-        });
+        const payoutSession = await withApiTiming("PATCH /api/payout/sessions/[id]", () =>
+            prisma.payoutSession.update({
+                where: { id },
+                data: {
+                    ...(payload.goldPool !== undefined && { goldPool: payload.goldPool }),
+                    ...(payload.status !== undefined && { status: payload.status }),
+                    ...(payload.name !== undefined && { name: payload.name }),
+                    ...(payload.isLocked !== undefined && {
+                        isLocked: payload.isLocked,
+                        lockedByUserId: payload.isLocked ? dbUser.id : null,
+                    }),
+                },
+                include: { entries: { orderBy: { displayName: "asc" } } },
+            }),
+        );
 
         publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
 
