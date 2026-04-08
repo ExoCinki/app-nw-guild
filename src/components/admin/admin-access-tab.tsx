@@ -31,16 +31,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
 
   const userById = new Map(users.map((u) => [u.id, u]));
   const guildById = new Map(guilds.map((g) => [g.discordGuildId, g]));
-  const usersWithScopedAccess = new Set(
-    accesses
-      .filter(
-        (item) => !selectedGuildId || item.discordGuildId === selectedGuildId,
-      )
-      .map((item) => item.userId),
-  );
 
   const filteredUsers = users.filter((user) => {
-    if (usersWithScopedAccess.has(user.id)) return false;
     const q = userSearchQuery.trim().toLowerCase();
     if (!q) return true;
     const label =
@@ -119,6 +111,10 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
 
       <div className="mb-3 text-xs text-slate-400">
         {filteredUsers.length} utilisateur(s) trouve(s)
+      </div>
+      <div className="mb-3 text-xs text-slate-500">
+        Choisis un utilisateur, puis un serveur, et enregistre. Tu peux refaire
+        l&apos;action pour plusieurs serveurs.
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">

@@ -154,6 +154,15 @@ export async function getManagedWhitelistedGuilds(
         select: { id: true, discordId: true },
     });
 
+    const isGlobalAdmin = user?.id
+        ? Boolean(
+            await prisma.globalAdmin.findUnique({
+                where: { userId: user.id },
+                select: { id: true },
+            }),
+        )
+        : false;
+
     const ownerDiscordId = process.env.OWNER_DISCORD_ID;
     const isOwner = Boolean(
         ownerDiscordId && user?.discordId && user.discordId === ownerDiscordId,
@@ -286,6 +295,10 @@ export async function getManagedWhitelistedGuilds(
 
     const managedGuilds = whitelistedGuilds
         .filter((guild: { discordGuildId: string; name: string | null }) => {
+            if (isOwner || isGlobalAdmin) {
+                return true;
+            }
+
             const guildId = guild.discordGuildId;
             const hasAdminAccess = adminGuildIds.has(guildId);
             const hasDelegatedReadAccess = delegatedReadableGuildIds.has(guildId);
