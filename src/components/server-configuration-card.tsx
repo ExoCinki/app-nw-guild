@@ -21,6 +21,7 @@ type ServerConfigurationResponse = {
   configuration: {
     apiKey: string;
     channelId: string;
+    enableSecondRoster: boolean;
     zooMemberRoleId: string;
     zooMemberRoleName: string;
     warsCount: number;
@@ -36,6 +37,7 @@ type ServerConfigurationResponse = {
 type SaveServerConfigurationPayload = {
   apiKey?: string;
   channelId?: string;
+  enableSecondRoster?: boolean;
   zooMemberRoleId?: string | null;
   warsCount?: number;
   racesCount?: number;
@@ -48,6 +50,7 @@ type SaveServerConfigurationPayload = {
 type EditableFieldKey =
   | "apiKey"
   | "channelId"
+  | "enableSecondRoster"
   | "zooMemberRoleId"
   | "warsCount"
   | "racesCount"
@@ -157,6 +160,7 @@ export function ServerConfigurationCard() {
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
   const [channelId, setChannelId] = useState("");
+  const [enableSecondRoster, setEnableSecondRoster] = useState(false);
   const [zooMemberRoleId, setZooMemberRoleId] = useState("");
   const [warsCount, setWarsCount] = useState("0");
   const [racesCount, setRacesCount] = useState("0");
@@ -183,6 +187,7 @@ export function ServerConfigurationCard() {
   function syncFromConfigurationData(data: ServerConfigurationResponse) {
     setApiKey(data.configuration.apiKey ?? "");
     setChannelId(data.configuration.channelId ?? "");
+    setEnableSecondRoster(Boolean(data.configuration.enableSecondRoster));
     setZooMemberRoleId(data.configuration.zooMemberRoleId ?? "");
     setWarsCount(String(data.configuration.warsCount));
     setRacesCount(String(data.configuration.racesCount));
@@ -210,6 +215,10 @@ export function ServerConfigurationCard() {
     }
     if (field === "channelId") {
       setChannelId(config.channelId ?? "");
+      return;
+    }
+    if (field === "enableSecondRoster") {
+      setEnableSecondRoster(Boolean(config.enableSecondRoster));
       return;
     }
     if (field === "zooMemberRoleId") {
@@ -247,6 +256,9 @@ export function ServerConfigurationCard() {
     }
     if (field === "channelId") {
       payload.channelId = channelId;
+    }
+    if (field === "enableSecondRoster") {
+      payload.enableSecondRoster = enableSecondRoster;
     }
     if (field === "zooMemberRoleId") {
       payload.zooMemberRoleId = zooMemberRoleId || null;
@@ -415,6 +427,48 @@ export function ServerConfigurationCard() {
                   setEditingField(null);
                 }}
                 onEdit={() => setEditingField("channelId")}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="enableSecondRoster"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
+              Enable second roster
+            </label>
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="enableSecondRoster"
+                className="flex w-full items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+              >
+                <span>Show roster 2 in roster page</span>
+                <input
+                  id="enableSecondRoster"
+                  type="checkbox"
+                  checked={enableSecondRoster}
+                  onChange={(event) =>
+                    setEnableSecondRoster(event.target.checked)
+                  }
+                  disabled={
+                    editingField !== "enableSecondRoster" ||
+                    pendingField === "enableSecondRoster"
+                  }
+                  className="h-4 w-4 accent-sky-500"
+                />
+              </label>
+              <EditButtons
+                isEditing={editingField === "enableSecondRoster"}
+                isPending={pendingField === "enableSecondRoster"}
+                onSave={() => {
+                  void saveField("enableSecondRoster");
+                }}
+                onCancel={() => {
+                  resetField("enableSecondRoster");
+                  setEditingField(null);
+                }}
+                onEdit={() => setEditingField("enableSecondRoster")}
               />
             </div>
           </div>

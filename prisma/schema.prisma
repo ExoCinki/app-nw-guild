@@ -86,6 +86,7 @@ model GuildConfiguration {
   discordGuildId String   @unique
   apiKey         String?  @db.Text
   channelId      String?
+  enableSecondRoster Boolean @default(false)
   zooMemberRoleId String?
   zooMemberRoleName String?
   warsCount      Int      @default(0)
@@ -114,12 +115,14 @@ model Roster {
 model RosterGroup {
   id          String       @id @default(cuid())
   rosterId    String
+  rosterIndex Int          @default(1)
   groupNumber Int
   name        String?
   slots       RosterSlot[]
   roster      Roster       @relation(fields: [rosterId], references: [id], onDelete: Cascade)
 
-  @@unique([rosterId, groupNumber])
+  @@unique([rosterId, rosterIndex, groupNumber])
+  @@index([rosterId, rosterIndex])
 }
 
 model RosterSlot {

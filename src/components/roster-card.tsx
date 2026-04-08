@@ -47,12 +47,15 @@ type RosterResponse = {
   guild: { id: string; name: string | null };
   roster: {
     selectedEventId: string | null;
+    enableSecondRoster: boolean;
     groups: RosterGroupData[];
+    secondGroups: RosterGroupData[];
   };
 };
 
 type PostGroupPayload = {
   guildId?: string;
+  rosterIndex?: 1 | 2;
   groupNumber: number;
   name: string | null;
   slots: Array<{
@@ -466,14 +469,17 @@ async function fetchRaidHelperParticipantsWithMode(
 // ─── GroupCard ─────────────────────────────────────────────────────────────────
 
 function GroupCard({
+  rosterIndex,
   group,
   onSaved,
   onDropParticipant,
   pendingDropTarget,
 }: {
+  rosterIndex: 1 | 2;
   group: RosterGroupData;
   onSaved: (updated: RosterResponse) => void;
   onDropParticipant: (input: {
+    rosterIndex: 1 | 2;
     groupNumber: number;
     slotPosition: number;
     playerName: string;
@@ -499,6 +505,7 @@ function GroupCard({
     setPending(true);
     try {
       const payload: PostGroupPayload = {
+        rosterIndex,
         groupNumber: group.groupNumber,
         name: localName.trim() || null,
         slots: group.slots.map((slot) => ({
@@ -578,7 +585,7 @@ function GroupCard({
           const displayPlayer = slot.playerName;
           const isEmpty = !displayPlayer;
           const displayRole = isEmpty ? null : (slot.role as RoleKey);
-          const slotKey = `${group.groupNumber}-${slot.position}`;
+          const slotKey = `${rosterIndex}-${group.groupNumber}-${slot.position}`;
           const isPendingDrop = pendingDropTarget === slotKey;
           const isHovered = hoveredSlot === slot.position;
 
@@ -630,6 +637,7 @@ function GroupCard({
                   const resolvedRole = resolveParticipantRole(participant);
 
                   onDropParticipant({
+                    rosterIndex,
                     groupNumber: group.groupNumber,
                     slotPosition: slot.position,
                     playerName,
@@ -663,6 +671,7 @@ function GroupCard({
                     setPending(true);
                     try {
                       const data = await saveGroup({
+                        rosterIndex,
                         groupNumber: group.groupNumber,
                         name: group.name,
                         slots: group.slots.map((currentSlot) => ({
@@ -857,12 +866,18 @@ export function RosterCard() {
   }, [queryClient]);
 
   async function handleParticipantDrop(input: {
+    rosterIndex: 1 | 2;
     groupNumber: number;
     slotPosition: number;
     playerName: string;
     role?: string | null;
   }) {
-    const targetGroup = data?.roster.groups.find(
+    const sourceGroups =
+      input.rosterIndex === 2
+        ? (data?.roster.secondGroups ?? [])
+        : (data?.roster.groups ?? []);
+
+    const targetGroup = sourceGroups.find(
       (group) => group.groupNumber === input.groupNumber,
     );
 
@@ -871,10 +886,13 @@ export function RosterCard() {
       return;
     }
 
-    setPendingDropTarget(`${input.groupNumber}-${input.slotPosition}`);
+    setPendingDropTarget(
+      `${input.rosterIndex}-${input.groupNumber}-${input.slotPosition}`,
+    );
 
     try {
       const updated = await saveGroup({
+        rosterIndex: input.rosterIndex,
         groupNumber: targetGroup.groupNumber,
         name: targetGroup.name,
         slots: targetGroup.slots.map((slot) => ({
@@ -891,7 +909,9 @@ export function RosterCard() {
       });
 
       handleGroupSaved(updated);
-      toast.success(`Player assigned to group ${input.groupNumber}.`);
+      toast.success(
+        `Player assigned to roster ${input.rosterIndex}, group ${input.groupNumber}.`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unknown error.");
     } finally {
@@ -912,11 +932,16 @@ export function RosterCard() {
   }
 
   const groups = data?.roster.groups ?? [];
+  const secondGroups = data?.roster.secondGroups ?? [];
+  const enableSecondRoster = data?.roster.enableSecondRoster ?? false;
+
   const row1 = groups.slice(0, 5);
   const row2 = groups.slice(5, 10);
+  const secondRow1 = secondGroups.slice(0, 5);
+  const secondRow2 = secondGroups.slice(5, 10);
 
   const assignedPlayerNames = new Set(
-    groups.flatMap((g) =>
+    [...groups, ...(enableSecondRoster ? secondGroups : [])].flatMap((g) =>
       g.slots.map((s) => s.playerName).filter(Boolean),
     ) as string[],
   );
@@ -1274,7 +1299,8 @@ export function RosterCard() {
         <div className="grid grid-cols-5 gap-3">
           {row1.map((group) => (
             <GroupCard
-              key={group.groupNumber}
+              key={`r1-${group.groupNumber}`}
+              rosterIndex={1}
               group={group}
               onSaved={handleGroupSaved}
               onDropParticipant={handleParticipantDrop}
@@ -1289,7 +1315,8 @@ export function RosterCard() {
         <div className="grid grid-cols-5 gap-3">
           {row2.map((group) => (
             <GroupCard
-              key={group.groupNumber}
+              key={`r1-${group.groupNumber}`}
+              rosterIndex={1}
               group={group}
               onSaved={handleGroupSaved}
               onDropParticipant={handleParticipantDrop}
@@ -1297,6 +1324,44 @@ export function RosterCard() {
             />
           ))}
         </div>
+
+        {enableSecondRoster ? (
+          <>
+            <div className="mt-2 border-t border-slate-700/80 pt-4">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
+                Roster 2
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-5 gap-3">
+              {secondRow1.map((group) => (
+                <GroupCard
+                  key={`r2-${group.groupNumber}`}
+                  rosterIndex={2}
+                  group={group}
+                  onSaved={handleGroupSaved}
+                  onDropParticipant={handleParticipantDrop}
+                  pendingDropTarget={pendingDropTarget}
+                />
+              ))}
+            </div>
+
+            <div className="border-t border-slate-800/60" />
+
+            <div className="grid grid-cols-5 gap-3">
+              {secondRow2.map((group) => (
+                <GroupCard
+                  key={`r2-${group.groupNumber}`}
+                  rosterIndex={2}
+                  group={group}
+                  onSaved={handleGroupSaved}
+                  onDropParticipant={handleParticipantDrop}
+                  pendingDropTarget={pendingDropTarget}
+                />
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
 
       {/* Legend */}

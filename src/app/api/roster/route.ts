@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
 
 const GROUP_COUNT = 10;
 const SLOT_COUNT = 5;
+const PRIMARY_ROSTER_INDEX = 1;
+const SECONDARY_ROSTER_INDEX = 2;
 
 async function resolveGuildForUser(
     email: string,
@@ -76,21 +78,27 @@ async function resolveGuildForUser(
     return { userId: user.id, guildId, guildName };
 }
 
-function buildNormalizedRoster(dbRoster: {
-    selectedEventId?: string | null;
-    groups: Array<{
-        groupNumber: number;
-        name: string | null;
-        slots: Array<{
-            position: number;
-            playerName: string | null;
-            role: string | null;
+function buildNormalizedRoster(
+    dbRoster: {
+        selectedEventId?: string | null;
+        groups: Array<{
+            rosterIndex: number;
+            groupNumber: number;
+            name: string | null;
+            slots: Array<{
+                position: number;
+                playerName: string | null;
+                role: string | null;
+            }>;
         }>;
-    }>;
-} | null) {
+    } | null,
+    rosterIndex: number,
+) {
     return Array.from({ length: GROUP_COUNT }, (_, i) => {
         const groupNumber = i + 1;
-        const dbGroup = dbRoster?.groups.find((g) => g.groupNumber === groupNumber);
+        const dbGroup = dbRoster?.groups.find(
+            (g) => g.groupNumber === groupNumber && g.rosterIndex === rosterIndex,
+        );
         return {
             groupNumber,
             name: dbGroup?.name ?? null,
@@ -105,6 +113,10 @@ function buildNormalizedRoster(dbRoster: {
             }),
         };
     });
+}
+
+function normalizePlayerKey(value: string | null | undefined) {
+    return value?.trim().toLowerCase() ?? "";
 }
 
 export async function GET(request: Request) {
@@ -123,27 +135,40 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    const dbRoster = await prisma.roster.findUnique({
-        where: { discordGuildId: resolved.guildId },
-        select: {
-            selectedEventId: true,
-            groups: {
-                select: {
-                    groupNumber: true,
-                    name: true,
-                    slots: {
-                        select: { position: true, playerName: true, role: true },
+    const [dbRoster, guildConfiguration] = await Promise.all([
+        prisma.roster.findUnique({
+            where: { discordGuildId: resolved.guildId },
+            select: {
+                selectedEventId: true,
+                groups: {
+                    select: {
+                        rosterIndex: true,
+                        groupNumber: true,
+                        name: true,
+                        slots: {
+                            select: { position: true, playerName: true, role: true },
+                        },
                     },
                 },
             },
-        },
-    });
+        }),
+        prisma.guildConfiguration.findUnique({
+            where: { discordGuildId: resolved.guildId },
+            select: { enableSecondRoster: true },
+        }),
+    ]);
+
+    const enableSecondRoster = guildConfiguration?.enableSecondRoster ?? false;
 
     return NextResponse.json({
         guild: { id: resolved.guildId, name: resolved.guildName },
         roster: {
             selectedEventId: dbRoster?.selectedEventId ?? null,
-            groups: buildNormalizedRoster(dbRoster),
+            enableSecondRoster,
+            groups: buildNormalizedRoster(dbRoster, PRIMARY_ROSTER_INDEX),
+            secondGroups: enableSecondRoster
+                ? buildNormalizedRoster(dbRoster, SECONDARY_ROSTER_INDEX)
+                : [],
         },
     });
 }
@@ -157,6 +182,7 @@ export async function POST(request: Request) {
 
     const payload = (await request.json()) as {
         guildId?: string;
+        rosterIndex?: number;
         groupNumber: number;
         name?: string | null;
         slots: Array<{
@@ -197,6 +223,29 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
+    const rosterIndex = payload.rosterIndex ?? PRIMARY_ROSTER_INDEX;
+
+    if (rosterIndex !== PRIMARY_ROSTER_INDEX && rosterIndex !== SECONDARY_ROSTER_INDEX) {
+        return NextResponse.json(
+            { error: "rosterIndex must be either 1 or 2" },
+            { status: 400 },
+        );
+    }
+
+    const guildConfiguration = await prisma.guildConfiguration.findUnique({
+        where: { discordGuildId: resolved.guildId },
+        select: { enableSecondRoster: true },
+    });
+
+    const enableSecondRoster = guildConfiguration?.enableSecondRoster ?? false;
+
+    if (rosterIndex === SECONDARY_ROSTER_INDEX && !enableSecondRoster) {
+        return NextResponse.json(
+            { error: "Second roster is not enabled for this server" },
+            { status: 400 },
+        );
+    }
+
     // Upsert roster
     const roster = await prisma.roster.upsert({
         where: { discordGuildId: resolved.guildId },
@@ -205,16 +254,62 @@ export async function POST(request: Request) {
         select: { id: true },
     });
 
+    const otherRosterIndex =
+        rosterIndex === PRIMARY_ROSTER_INDEX
+            ? SECONDARY_ROSTER_INDEX
+            : PRIMARY_ROSTER_INDEX;
+
+    const otherRosterGroups = await prisma.rosterGroup.findMany({
+        where: {
+            rosterId: roster.id,
+            rosterIndex: otherRosterIndex,
+        },
+        select: {
+            slots: {
+                select: {
+                    playerName: true,
+                },
+            },
+        },
+    });
+
+    const otherRosterPlayerKeys = new Set(
+        otherRosterGroups
+            .flatMap((group) => group.slots)
+            .map((slot) => normalizePlayerKey(slot.playerName))
+            .filter(Boolean),
+    );
+
+    const conflictingPlayers = Array.from(
+        new Set(
+            payload.slots
+                .map((slot) => slot.playerName?.trim() ?? "")
+                .filter((name) => name.length > 0)
+                .filter((name) => otherRosterPlayerKeys.has(normalizePlayerKey(name))),
+        ),
+    );
+
+    if (conflictingPlayers.length > 0) {
+        return NextResponse.json(
+            {
+                error: `These players are already used in roster ${otherRosterIndex}: ${conflictingPlayers.join(", ")}`,
+            },
+            { status: 400 },
+        );
+    }
+
     // Upsert group
     const group = await prisma.rosterGroup.upsert({
         where: {
-            rosterId_groupNumber: {
+            rosterId_rosterIndex_groupNumber: {
                 rosterId: roster.id,
+                rosterIndex,
                 groupNumber: payload.groupNumber,
             },
         },
         create: {
             rosterId: roster.id,
+            rosterIndex,
             groupNumber: payload.groupNumber,
             name: (payload.name ?? "").trim() || null,
         },
@@ -255,6 +350,7 @@ export async function POST(request: Request) {
             selectedEventId: true,
             groups: {
                 select: {
+                    rosterIndex: true,
                     groupNumber: true,
                     name: true,
                     slots: {
@@ -271,7 +367,11 @@ export async function POST(request: Request) {
         guild: { id: resolved.guildId, name: resolved.guildName },
         roster: {
             selectedEventId: dbRoster?.selectedEventId ?? null,
-            groups: buildNormalizedRoster(dbRoster),
+            enableSecondRoster,
+            groups: buildNormalizedRoster(dbRoster, PRIMARY_ROSTER_INDEX),
+            secondGroups: enableSecondRoster
+                ? buildNormalizedRoster(dbRoster, SECONDARY_ROSTER_INDEX)
+                : [],
         },
     });
 }
@@ -311,6 +411,7 @@ export async function PATCH(request: Request) {
             selectedEventId: true,
             groups: {
                 select: {
+                    rosterIndex: true,
                     groupNumber: true,
                     name: true,
                     slots: {
@@ -321,13 +422,24 @@ export async function PATCH(request: Request) {
         },
     });
 
+    const guildConfiguration = await prisma.guildConfiguration.findUnique({
+        where: { discordGuildId: resolved.guildId },
+        select: { enableSecondRoster: true },
+    });
+
+    const enableSecondRoster = guildConfiguration?.enableSecondRoster ?? false;
+
     publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
 
     return NextResponse.json({
         guild: { id: resolved.guildId, name: resolved.guildName },
         roster: {
             selectedEventId: roster.selectedEventId ?? null,
-            groups: buildNormalizedRoster(roster),
+            enableSecondRoster,
+            groups: buildNormalizedRoster(roster, PRIMARY_ROSTER_INDEX),
+            secondGroups: enableSecondRoster
+                ? buildNormalizedRoster(roster, SECONDARY_ROSTER_INDEX)
+                : [],
         },
     });
 }
@@ -358,21 +470,30 @@ export async function DELETE(request: Request) {
         data: { playerName: null, role: null },
     });
 
-    const dbRoster = await prisma.roster.findUnique({
-        where: { discordGuildId: resolved.guildId },
-        select: {
-            selectedEventId: true,
-            groups: {
-                select: {
-                    groupNumber: true,
-                    name: true,
-                    slots: {
-                        select: { position: true, playerName: true, role: true },
+    const [dbRoster, guildConfiguration] = await Promise.all([
+        prisma.roster.findUnique({
+            where: { discordGuildId: resolved.guildId },
+            select: {
+                selectedEventId: true,
+                groups: {
+                    select: {
+                        rosterIndex: true,
+                        groupNumber: true,
+                        name: true,
+                        slots: {
+                            select: { position: true, playerName: true, role: true },
+                        },
                     },
                 },
             },
-        },
-    });
+        }),
+        prisma.guildConfiguration.findUnique({
+            where: { discordGuildId: resolved.guildId },
+            select: { enableSecondRoster: true },
+        }),
+    ]);
+
+    const enableSecondRoster = guildConfiguration?.enableSecondRoster ?? false;
 
     publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
 
@@ -380,7 +501,11 @@ export async function DELETE(request: Request) {
         guild: { id: resolved.guildId, name: resolved.guildName },
         roster: {
             selectedEventId: dbRoster?.selectedEventId ?? null,
-            groups: buildNormalizedRoster(dbRoster ?? null),
+            enableSecondRoster,
+            groups: buildNormalizedRoster(dbRoster ?? null, PRIMARY_ROSTER_INDEX),
+            secondGroups: enableSecondRoster
+                ? buildNormalizedRoster(dbRoster ?? null, SECONDARY_ROSTER_INDEX)
+                : [],
         },
     });
 }

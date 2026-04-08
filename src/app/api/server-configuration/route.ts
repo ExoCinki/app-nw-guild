@@ -213,6 +213,7 @@ export async function GET(request: Request) {
         select: {
             apiKey: true,
             channelId: true,
+            enableSecondRoster: true,
             zooMemberRoleId: true,
             zooMemberRoleName: true,
             warsCount: true,
@@ -237,6 +238,7 @@ export async function GET(request: Request) {
         configuration: {
             apiKey: config?.apiKey ?? "",
             channelId: config?.channelId ?? "",
+            enableSecondRoster: config?.enableSecondRoster ?? false,
             zooMemberRoleId: config?.zooMemberRoleId ?? "",
             zooMemberRoleName: config?.zooMemberRoleName ?? "",
             warsCount: config?.warsCount ?? 0,
@@ -261,6 +263,7 @@ export async function POST(request: Request) {
         guildId?: string;
         apiKey?: string;
         channelId?: string;
+        enableSecondRoster?: boolean;
         zooMemberRoleId?: string | null;
         warsCount?: number;
         racesCount?: number;
@@ -285,6 +288,7 @@ export async function POST(request: Request) {
         select: {
             apiKey: true,
             channelId: true,
+            enableSecondRoster: true,
             zooMemberRoleId: true,
             zooMemberRoleName: true,
             warsCount: true,
@@ -298,6 +302,10 @@ export async function POST(request: Request) {
 
     const hasApiKey = Object.prototype.hasOwnProperty.call(payload, "apiKey");
     const hasChannelId = Object.prototype.hasOwnProperty.call(payload, "channelId");
+    const hasEnableSecondRoster = Object.prototype.hasOwnProperty.call(
+        payload,
+        "enableSecondRoster",
+    );
     const hasZooMemberRoleId = Object.prototype.hasOwnProperty.call(
         payload,
         "zooMemberRoleId",
@@ -315,6 +323,19 @@ export async function POST(request: Request) {
     const channelId = hasChannelId
         ? (payload.channelId ?? "").trim() || null
         : existing?.channelId ?? null;
+
+    let enableSecondRoster = existing?.enableSecondRoster ?? false;
+
+    if (hasEnableSecondRoster) {
+        if (typeof payload.enableSecondRoster !== "boolean") {
+            return NextResponse.json(
+                { error: "enableSecondRoster must be a boolean" },
+                { status: 400 },
+            );
+        }
+
+        enableSecondRoster = payload.enableSecondRoster;
+    }
 
     let warsCount = existing?.warsCount ?? 0;
     let racesCount = existing?.racesCount ?? 0;
@@ -396,6 +417,7 @@ export async function POST(request: Request) {
         update: {
             apiKey,
             channelId,
+            enableSecondRoster,
             zooMemberRoleId,
             zooMemberRoleName,
             warsCount,
@@ -409,6 +431,7 @@ export async function POST(request: Request) {
             discordGuildId: resolved.guildId,
             apiKey,
             channelId,
+            enableSecondRoster,
             zooMemberRoleId,
             zooMemberRoleName,
             warsCount,
@@ -421,6 +444,7 @@ export async function POST(request: Request) {
         select: {
             apiKey: true,
             channelId: true,
+            enableSecondRoster: true,
             zooMemberRoleId: true,
             zooMemberRoleName: true,
             warsCount: true,
@@ -445,6 +469,7 @@ export async function POST(request: Request) {
         configuration: {
             apiKey: saved.apiKey ?? "",
             channelId: saved.channelId ?? "",
+            enableSecondRoster: saved.enableSecondRoster,
             zooMemberRoleId: saved.zooMemberRoleId ?? "",
             zooMemberRoleName: saved.zooMemberRoleName ?? "",
             warsCount: saved.warsCount,
