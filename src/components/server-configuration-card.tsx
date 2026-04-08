@@ -278,7 +278,7 @@ export function ServerConfigurationCard() {
     if (field === "vodsCount") {
       const value = Number(vodsCount);
       if (!Number.isInteger(value) || value < 0) {
-        toast.error("VOD points must be an integer >= 0.");
+        toast.error("Management points must be an integer >= 0.");
         return;
       }
       payload.vodsCount = value;
@@ -580,7 +580,7 @@ export function ServerConfigurationCard() {
               htmlFor="vodsCount"
               className="mb-2 block text-sm font-medium text-slate-300"
             >
-              Point per Vods
+              Point per Management
             </label>
             <div className="flex items-center gap-2">
               <input

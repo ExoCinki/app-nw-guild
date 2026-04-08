@@ -268,7 +268,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
       else if (field === "invasionsCount")
         parsedInvasions = parseCount(invasionsCount, "Invasion points");
       else if (field === "vodsCount")
-        parsedVods = parseCount(vodsCount, "VOD points");
+        parsedVods = parseCount(vodsCount, "Management points");
       else if (field === "reviewsCount")
         parsedReviews = parseCount(reviewsCount, "Review points");
       else if (field === "bonusCount")
@@ -554,7 +554,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
             htmlFor="admin-cfg-vodsCount"
             className="mb-2 block text-sm font-medium text-slate-300"
           >
-            Points par VOD
+            Points par Management
           </label>
           <div className="flex items-center gap-2">
             <input
