@@ -141,6 +141,7 @@ export default function PayoutClient() {
       const data = (await res.json()) as { user: { id: string } };
       return data.user;
     },
+    staleTime: 10 * 60 * 1000,
   });
 
   // Fetch sessions
@@ -151,7 +152,8 @@ export default function PayoutClient() {
       if (!res.ok) throw new Error("Failed to fetch sessions");
       return res.json() as Promise<PayoutSession[]>;
     },
-    refetchOnWindowFocus: true,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Fetch guild config for multipliers
@@ -162,6 +164,7 @@ export default function PayoutClient() {
       if (!res.ok) throw new Error("Failed to fetch config");
       return res.json();
     },
+    staleTime: 5 * 60 * 1000,
   });
 
   // Search Discord users
@@ -176,6 +179,7 @@ export default function PayoutClient() {
       return res.json() as Promise<DiscordUser[]>;
     },
     enabled: searchQuery.length >= 2,
+    staleTime: 30 * 1000,
   });
 
   // Create session

@@ -633,10 +633,8 @@ function GroupCard({
         role: editingRole,
       });
 
-      // Refetch to verify data consistency
-      const updated = await fetchRoster();
-      queryClient.setQueryData(["roster"], updated);
-      onSaved(updated);
+      // Sync in background without blocking the UI.
+      void queryClient.invalidateQueries({ queryKey: ["roster"] });
 
       setEditingSlotPosition(null);
       setEditingPlayerName("");
@@ -946,10 +944,10 @@ function GroupCard({
                         role: null,
                       });
 
-                      // Refetch to verify
-                      const updated = await fetchRoster();
-                      queryClient.setQueryData(["roster"], updated);
-                      onSaved(updated);
+                      // Sync in background without blocking the UI.
+                      void queryClient.invalidateQueries({
+                        queryKey: ["roster"],
+                      });
 
                       toast.success("Player removed from roster.");
                     } catch (error) {
@@ -1224,10 +1222,8 @@ export function RosterCard() {
         role: input.role ?? null,
       });
 
-      // Refetch to verify
-      const updated = await fetchRoster();
-      queryClient.setQueryData(["roster"], updated);
-      handleGroupSaved(updated);
+      // Sync in background without blocking the UI.
+      void queryClient.invalidateQueries({ queryKey: ["roster"] });
 
       toast.success(
         `Player assigned to roster ${input.rosterIndex}, group ${input.groupNumber}.`,

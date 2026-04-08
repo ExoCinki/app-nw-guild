@@ -181,6 +181,9 @@ export function ServerConfigurationCard() {
   const configurationQuery = useQuery({
     queryKey: ["server-configuration"],
     queryFn: getServerConfiguration,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const saveMutation = useMutation({
