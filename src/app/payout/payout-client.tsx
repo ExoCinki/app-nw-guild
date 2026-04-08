@@ -957,7 +957,7 @@ export default function PayoutClient() {
                     <th className="text-center px-3 py-2">Reviews</th>
                     <th className="text-center px-3 py-2">Bonus</th>
                     <th className="text-center px-3 py-2">Invasions</th>
-                    <th className="text-center px-3 py-2">VODs</th>
+                    <th className="text-center px-3 py-2">Management</th>
                     <th className="text-center px-3 py-2">Points</th>
                     <th className="text-center px-3 py-2">Gold</th>
                     <th className="text-center px-3 py-2">Paid</th>
