@@ -6,6 +6,7 @@ import { LoadingIndicator } from "@/components/loading-indicator";
 import { WhitelistManager } from "@/components/whitelist-manager";
 import { AdminUsersTab } from "@/components/admin/admin-users-tab";
 import { AdminAccessTab } from "@/components/admin/admin-access-tab";
+import { AdminGlobalAdminsTab } from "@/components/admin/admin-global-admins-tab";
 import { AdminConfigurationTab } from "@/components/admin/admin-configuration-tab";
 import { AdminBansTab } from "@/components/admin/admin-bans-tab";
 import type { AdminGlobalResponse } from "@/components/admin/admin-types";
@@ -21,11 +22,18 @@ async function fetchAdminGlobalData() {
   return response.json() as Promise<AdminGlobalResponse>;
 }
 
-type Tab = "users" | "access" | "configuration" | "bans" | "whitelist";
+type Tab =
+  | "users"
+  | "access"
+  | "global-admins"
+  | "configuration"
+  | "bans"
+  | "whitelist";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "users", label: "Users" },
   { id: "access", label: "Acces" },
+  { id: "global-admins", label: "Admins globaux" },
   { id: "configuration", label: "Configuration" },
   { id: "bans", label: "Bans" },
   { id: "whitelist", label: "Whitelist" },
@@ -84,7 +92,11 @@ export function GlobalAdminManager() {
       ) : null}
 
       {activeTab === "access" ? (
-        <AdminAccessTab users={users} guilds={guilds} accesses={accesses} globalAdmins={globalAdmins} />
+        <AdminAccessTab users={users} guilds={guilds} accesses={accesses} />
+      ) : null}
+
+      {activeTab === "global-admins" ? (
+        <AdminGlobalAdminsTab users={users} globalAdmins={globalAdmins} />
       ) : null}
 
       {activeTab === "configuration" ? (

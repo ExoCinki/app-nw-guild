@@ -4,6 +4,24 @@ import { getOwnerGuardStatus } from "@/lib/admin-access";
 
 export const dynamic = "force-dynamic";
 
+type DiscordRole = {
+    id: string;
+    name: string;
+    position: number;
+};
+
+const preferredBotTokenByGuild = new Map<string, string>();
+
+function getDiscordBotTokens(): string[] {
+    const multi = (process.env.DISCORD_BOT_TOKENS ?? "")
+        .split(",")
+        .map((token) => token.trim())
+        .filter(Boolean);
+    const single = (process.env.DISCORD_BOT_TOKEN ?? "").trim();
+
+    return [...new Set([...multi, ...(single ? [single] : [])])];
+}
+
 function ownerGuardResponse(status: "unauthorized" | "forbidden" | "misconfigured") {
     if (status === "unauthorized") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,6 +45,86 @@ function parseNonNegativeInt(value: unknown, fieldName: string): number {
     return value;
 }
 
+async function getDiscordGuildRoles(guildId: string): Promise<{
+    roles: DiscordRole[];
+    rolesError: string | null;
+}> {
+    const tokens = getDiscordBotTokens();
+
+    if (tokens.length === 0) {
+        return {
+            roles: [],
+            rolesError: "DISCORD_BOT_TOKEN ou DISCORD_BOT_TOKENS manquant pour charger les roles.",
+        };
+    }
+
+    const preferred = preferredBotTokenByGuild.get(guildId);
+    const orderedTokens = preferred
+        ? [preferred, ...tokens.filter((token) => token !== preferred)]
+        : tokens;
+
+    let lastStatus: number | null = null;
+
+    for (const botToken of orderedTokens) {
+        const response = await fetch(
+            `https://discord.com/api/v10/guilds/${guildId}/roles`,
+            {
+                headers: {
+                    Authorization: `Bot ${botToken}`,
+                },
+                cache: "no-store",
+            },
+        );
+
+        lastStatus = response.status;
+
+        if (!response.ok) {
+            continue;
+        }
+
+        preferredBotTokenByGuild.set(guildId, botToken);
+
+        const roles = (await response.json()) as Array<{
+            id: string;
+            name: string;
+            position: number;
+            managed?: boolean;
+            tags?: {
+                bot_id?: string;
+                integration_id?: string;
+            };
+        }>;
+
+        const filtered = roles
+            .filter((role) => role.id !== guildId)
+            .filter(
+                (role) =>
+                    !role.managed &&
+                    !role.tags?.bot_id &&
+                    !role.tags?.integration_id,
+            )
+            .sort((a, b) => b.position - a.position)
+            .map((role) => ({
+                id: role.id,
+                name: role.name,
+                position: role.position,
+            }));
+
+        return {
+            roles: filtered,
+            rolesError: null,
+        };
+    }
+
+    return {
+        roles: [],
+        rolesError:
+            lastStatus !== null
+                ? `Unable to load Discord roles for this server (status ${lastStatus}).`
+                : "Unable to load Discord roles for this server.",
+    };
+}
+
 async function ensureWhitelistedGuild(guildId: string) {
     const guild = await prisma.whitelistedGuild.findUnique({
         where: { discordGuildId: guildId },
@@ -36,10 +134,28 @@ async function ensureWhitelistedGuild(guildId: string) {
     return Boolean(guild);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
     const ownerStatus = await getOwnerGuardStatus();
     if (ownerStatus.status !== "ok") {
         return ownerGuardResponse(ownerStatus.status);
+    }
+
+    const requestUrl = new URL(request.url);
+    const requestType = requestUrl.searchParams.get("type");
+    const guildId = requestUrl.searchParams.get("guildId")?.trim();
+
+    if (requestType === "guild-roles") {
+        if (!guildId) {
+            return NextResponse.json({ error: "guildId is required" }, { status: 400 });
+        }
+
+        const guildExists = await ensureWhitelistedGuild(guildId);
+        if (!guildExists) {
+            return NextResponse.json({ error: "Guild is not whitelisted" }, { status: 404 });
+        }
+
+        const { roles, rolesError } = await getDiscordGuildRoles(guildId);
+        return NextResponse.json({ roles, rolesError });
     }
 
     const [guilds, users, accesses, bans, configurations, globalAdmins] = await Promise.all([
@@ -420,6 +536,36 @@ export async function PATCH(request: NextRequest) {
         );
     }
 
+    let zooMemberRoleId = existing?.zooMemberRoleId ?? null;
+    let zooMemberRoleName = existing?.zooMemberRoleName ?? null;
+
+    if (Object.prototype.hasOwnProperty.call(configPayload, "zooMemberRoleId")) {
+        const incomingRoleId = (configPayload.zooMemberRoleId ?? "").trim();
+
+        if (!incomingRoleId) {
+            zooMemberRoleId = null;
+            zooMemberRoleName = null;
+        } else {
+            const { roles, rolesError } = await getDiscordGuildRoles(guildId);
+
+            if (rolesError) {
+                return NextResponse.json({ error: rolesError }, { status: 503 });
+            }
+
+            const selectedRole = roles.find((role) => role.id === incomingRoleId);
+
+            if (!selectedRole) {
+                return NextResponse.json(
+                    { error: "The selected role was not found on this server." },
+                    { status: 400 },
+                );
+            }
+
+            zooMemberRoleId = incomingRoleId;
+            zooMemberRoleName = selectedRole.name;
+        }
+    }
+
     const saved = await prisma.guildConfiguration.upsert({
         where: { discordGuildId: guildId },
         update: {
@@ -429,12 +575,8 @@ export async function PATCH(request: NextRequest) {
             ...(Object.prototype.hasOwnProperty.call(configPayload, "channelId") && {
                 channelId: (configPayload.channelId ?? "").trim() || null,
             }),
-            ...(Object.prototype.hasOwnProperty.call(configPayload, "zooMemberRoleId") && {
-                zooMemberRoleId: (configPayload.zooMemberRoleId ?? "").trim() || null,
-            }),
-            ...(Object.prototype.hasOwnProperty.call(configPayload, "zooMemberRoleName") && {
-                zooMemberRoleName: (configPayload.zooMemberRoleName ?? "").trim() || null,
-            }),
+            zooMemberRoleId,
+            zooMemberRoleName,
             warsCount,
             racesCount,
             invasionsCount,
@@ -446,8 +588,8 @@ export async function PATCH(request: NextRequest) {
             discordGuildId: guildId,
             apiKey: (configPayload.apiKey ?? "").trim() || null,
             channelId: (configPayload.channelId ?? "").trim() || null,
-            zooMemberRoleId: (configPayload.zooMemberRoleId ?? "").trim() || null,
-            zooMemberRoleName: (configPayload.zooMemberRoleName ?? "").trim() || null,
+            zooMemberRoleId,
+            zooMemberRoleName,
             warsCount,
             racesCount,
             invasionsCount,

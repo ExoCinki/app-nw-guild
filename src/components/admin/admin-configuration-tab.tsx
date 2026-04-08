@@ -3,13 +3,42 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faPencil, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { LoadingIndicator } from "@/components/loading-indicator";
 import type {
   AdminConfiguration,
   AdminGuild,
 } from "@/components/admin/admin-types";
+
+type AdminGuildRolesResponse = {
+  roles: Array<{
+    id: string;
+    name: string;
+    position: number;
+  }>;
+  rolesError: string | null;
+};
+
+async function fetchAdminGuildRoles(
+  guildId: string,
+): Promise<AdminGuildRolesResponse> {
+  const response = await fetch(
+    `/api/admin/global?type=guild-roles&guildId=${encodeURIComponent(guildId)}`,
+    {
+      credentials: "include",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(body?.error ?? "Unable to load roles");
+  }
+
+  return response.json() as Promise<AdminGuildRolesResponse>;
+}
 
 type Props = {
   guilds: AdminGuild[];
@@ -117,6 +146,12 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     (item) => item.discordGuildId === resolvedConfigGuildId,
   );
 
+  const rolesQuery = useQuery({
+    queryKey: ["admin-global-guild-roles", resolvedConfigGuildId],
+    queryFn: () => fetchAdminGuildRoles(resolvedConfigGuildId),
+    enabled: Boolean(resolvedConfigGuildId),
+  });
+
   useEffect(() => {
     setApiKey(selectedConfig?.apiKey ?? "");
     setChannelId(selectedConfig?.channelId ?? "");
@@ -163,6 +198,10 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const roles = rolesQuery.data?.roles ?? [];
+  const rolesError = rolesQuery.data?.rolesError;
+  const selectedRoleExists = roles.some((role) => role.id === zooMemberRoleId);
 
   function resetField(field: EditableFieldKey) {
     if (field === "apiKey") {
@@ -264,7 +303,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
   return (
     <section className="rounded-xl border border-slate-800/60 bg-slate-900/70 p-4 sm:p-6">
       <div className="mb-4 text-lg font-semibold text-slate-100">
-        Configuration serveur (admin global)
+        Configuration serveur
       </div>
 
       <div className="mb-6">
@@ -359,20 +398,33 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
             htmlFor="admin-cfg-zooMemberRoleId"
             className="mb-2 block text-sm font-medium text-slate-300"
           >
-            Zoo role ID
+            Role membre
           </label>
           <div className="flex items-center gap-2">
-            <input
+            <select
               id="admin-cfg-zooMemberRoleId"
               value={zooMemberRoleId}
               onChange={(e) => setZooMemberRoleId(e.target.value)}
-              placeholder="ex: 123456789012345678"
               disabled={
                 editingField !== "zooMemberRoleId" ||
-                pendingField === "zooMemberRoleId"
+                pendingField === "zooMemberRoleId" ||
+                rolesQuery.isLoading
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
-            />
+            >
+              <option value="">-- Aucun role --</option>
+              {!selectedRoleExists && zooMemberRoleId ? (
+                <option value={zooMemberRoleId}>
+                  {selectedConfig?.zooMemberRoleName || zooMemberRoleId}{" "}
+                  (introuvable)
+                </option>
+              ) : null}
+              {roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.name}
+                </option>
+              ))}
+            </select>
             <EditButtons
               isEditing={editingField === "zooMemberRoleId"}
               isPending={pendingField === "zooMemberRoleId"}
@@ -386,6 +438,9 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
               onEdit={() => setEditingField("zooMemberRoleId")}
             />
           </div>
+          {rolesError ? (
+            <p className="mt-2 text-xs text-amber-300">{rolesError}</p>
+          ) : null}
         </div>
 
         <div>
