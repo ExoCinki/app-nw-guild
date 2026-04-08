@@ -491,6 +491,11 @@ function GroupCard({
   const [pending, setPending] = useState(false);
   const [hoveredSlot, setHoveredSlot] = useState<number | null>(null);
   const [localName, setLocalName] = useState(group.name ?? "");
+  const [editingSlotPosition, setEditingSlotPosition] = useState<number | null>(
+    null,
+  );
+  const [editingPlayerName, setEditingPlayerName] = useState("");
+  const [editingRole, setEditingRole] = useState<RoleKey>(null);
 
   function startEdit() {
     setLocalName(group.name ?? "");
@@ -499,6 +504,55 @@ function GroupCard({
 
   function cancelEdit() {
     setEditing(false);
+  }
+
+  function startSlotEdit(slot: RosterSlotData) {
+    setEditingSlotPosition(slot.position);
+    setEditingPlayerName(slot.playerName ?? "");
+    setEditingRole(slot.role as RoleKey);
+  }
+
+  function cancelSlotEdit() {
+    setEditingSlotPosition(null);
+    setEditingPlayerName("");
+    setEditingRole(null);
+  }
+
+  async function confirmSlotEdit() {
+    const trimmedName = editingPlayerName.trim();
+    if (!trimmedName) {
+      toast.error("Player name cannot be empty.");
+      return;
+    }
+
+    setPending(true);
+    try {
+      const data = await saveGroup({
+        rosterIndex,
+        groupNumber: group.groupNumber,
+        name: group.name,
+        slots: group.slots.map((currentSlot) => ({
+          position: currentSlot.position,
+          playerName:
+            currentSlot.position === editingSlotPosition
+              ? trimmedName
+              : currentSlot.playerName,
+          role:
+            currentSlot.position === editingSlotPosition
+              ? editingRole
+              : currentSlot.role,
+        })),
+      });
+      onSaved(data);
+      setEditingSlotPosition(null);
+      setEditingPlayerName("");
+      setEditingRole(null);
+      toast.success("Player added to roster.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unknown error.");
+    } finally {
+      setPending(false);
+    }
   }
 
   async function confirmEdit() {
@@ -588,6 +642,62 @@ function GroupCard({
           const slotKey = `${rosterIndex}-${group.groupNumber}-${slot.position}`;
           const isPendingDrop = pendingDropTarget === slotKey;
           const isHovered = hoveredSlot === slot.position;
+          const isEditingThisSlot = editingSlotPosition === slot.position;
+
+          // If editing this slot, show the edit form
+          if (isEditingThisSlot) {
+            return (
+              <div
+                key={slot.position}
+                className="flex flex-col gap-2 rounded-md border border-sky-500/40 bg-sky-500/5 p-2"
+              >
+                <input
+                  type="text"
+                  value={editingPlayerName}
+                  onChange={(e) => setEditingPlayerName(e.target.value)}
+                  placeholder="Player name"
+                  className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none focus:ring-1 focus:ring-sky-500"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <select
+                    value={editingRole ?? ""}
+                    onChange={(e) =>
+                      setEditingRole((e.target.value as RoleKey) || null)
+                    }
+                    className="flex-1 rounded bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none focus:ring-1 focus:ring-sky-500"
+                  >
+                    <option value="">No role</option>
+                    {Object.entries(ROLE_META)
+                      .filter(([key]) => key !== "bench")
+                      .map(([key, value]) => (
+                        <option key={key} value={key}>
+                          {value.label}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={confirmSlotEdit}
+                    disabled={pending}
+                    className="flex-1 rounded border border-emerald-500/60 py-1 text-emerald-400/70 text-xs transition hover:bg-emerald-500/10 disabled:opacity-40"
+                  >
+                    <FontAwesomeIcon icon={faCheck} className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelSlotEdit}
+                    disabled={pending}
+                    className="flex-1 rounded border border-rose-500/60 py-1 text-rose-400/70 text-xs transition hover:bg-rose-500/10 disabled:opacity-40"
+                  >
+                    <FontAwesomeIcon icon={faXmark} className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div
@@ -596,7 +706,7 @@ function GroupCard({
                 !editing && (isHovered || isPendingDrop)
                   ? "bg-sky-500/10 outline outline-1 outline-sky-500/40"
                   : ""
-              }`}
+              } ${isEmpty && !editing ? "cursor-pointer hover:bg-slate-800/50" : ""}`}
               onDragOver={(event) => {
                 if (editing) {
                   return;
@@ -645,6 +755,11 @@ function GroupCard({
                   });
                 } catch {
                   toast.error("Unable to read dragged participant.");
+                }
+              }}
+              onClick={() => {
+                if (isEmpty && !editing) {
+                  startSlotEdit(slot);
                 }
               }}
             >
