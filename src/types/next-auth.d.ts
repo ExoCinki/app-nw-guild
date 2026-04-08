@@ -6,11 +6,15 @@ declare module "next-auth" {
             id: string;
             displayName?: string | null;
             discordId?: string | null;
+            isGlobalAdmin?: boolean;
+            isOwner?: boolean;
         };
     }
 
     interface User {
         displayName?: string | null;
         discordId?: string | null;
+        isGlobalAdmin?: boolean;
+        isOwner?: boolean;
     }
 }

@@ -30,16 +30,16 @@ type Tab =
   | "bans"
   | "whitelist";
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: Tab; label: string; ownerOnly?: boolean }[] = [
   { id: "users", label: "Users" },
   { id: "access", label: "Acces" },
   { id: "global-admins", label: "Admins globaux" },
   { id: "configuration", label: "Configuration" },
   { id: "bans", label: "Bans" },
-  { id: "whitelist", label: "Whitelist" },
+  { id: "whitelist", label: "Whitelist", ownerOnly: true },
 ];
 
-export function GlobalAdminManager() {
+export function GlobalAdminManager({ isOwner }: { isOwner: boolean }) {
   const [activeTab, setActiveTab] = useState<Tab>("users");
 
   const query = useQuery({
@@ -67,11 +67,12 @@ export function GlobalAdminManager() {
   const accesses = query.data?.accesses ?? [];
   const configurations = query.data?.configurations ?? [];
   const globalAdmins = query.data?.globalAdmins ?? [];
+  const visibleTabs = TABS.filter((tab) => !tab.ownerOnly || isOwner);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-2 rounded-xl border border-slate-800/60 bg-slate-900/70 p-2">
-        {TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             type="button"

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getOwnerGuardStatus } from "@/lib/admin-access";
+import { getAdminGuardStatus } from "@/lib/admin-access";
 
 export const dynamic = "force-dynamic";
 
@@ -135,9 +135,9 @@ async function ensureWhitelistedGuild(guildId: string) {
 }
 
 export async function GET(request: NextRequest) {
-    const ownerStatus = await getOwnerGuardStatus();
-    if (ownerStatus.status !== "ok") {
-        return ownerGuardResponse(ownerStatus.status);
+    const adminStatus = await getAdminGuardStatus();
+    if (adminStatus.status !== "ok") {
+        return ownerGuardResponse(adminStatus.status);
     }
 
     const requestUrl = new URL(request.url);
@@ -240,9 +240,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-    const ownerStatus = await getOwnerGuardStatus();
-    if (ownerStatus.status !== "ok") {
-        return ownerGuardResponse(ownerStatus.status);
+    const adminStatus = await getAdminGuardStatus();
+    if (adminStatus.status !== "ok") {
+        return ownerGuardResponse(adminStatus.status);
     }
 
     const payload = (await request.json().catch(() => null)) as
@@ -603,9 +603,9 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-    const ownerStatus = await getOwnerGuardStatus();
-    if (ownerStatus.status !== "ok") {
-        return ownerGuardResponse(ownerStatus.status);
+    const adminStatus = await getAdminGuardStatus();
+    if (adminStatus.status !== "ok") {
+        return ownerGuardResponse(adminStatus.status);
     }
 
     const payload = (await request.json().catch(() => null)) as {
@@ -623,12 +623,12 @@ export async function POST(request: NextRequest) {
         where: { discordId },
         update: {
             reason: payload?.reason?.trim() || null,
-            bannedByUserId: ownerStatus.session.user.id,
+            bannedByUserId: adminStatus.session.user.id,
         },
         create: {
             discordId,
             reason: payload?.reason?.trim() || null,
-            bannedByUserId: ownerStatus.session.user.id,
+            bannedByUserId: adminStatus.session.user.id,
         },
         select: {
             discordId: true,
@@ -642,9 +642,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-    const ownerStatus = await getOwnerGuardStatus();
-    if (ownerStatus.status !== "ok") {
-        return ownerGuardResponse(ownerStatus.status);
+    const adminStatus = await getAdminGuardStatus();
+    if (adminStatus.status !== "ok") {
+        return ownerGuardResponse(adminStatus.status);
     }
 
     const discordId = request.nextUrl.searchParams.get("discordId")?.trim();

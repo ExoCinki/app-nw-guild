@@ -69,9 +69,19 @@ export const authOptions: NextAuthOptions = {
                     }
                 }
 
+                const globalAdmin = await prisma.globalAdmin.findUnique({
+                    where: { userId: user.id },
+                    select: { id: true },
+                });
+                const ownerDiscordId = process.env.OWNER_DISCORD_ID;
+
                 session.user.id = user.id;
                 session.user.displayName = displayName;
                 session.user.discordId = discordId;
+                session.user.isGlobalAdmin = Boolean(globalAdmin);
+                session.user.isOwner = Boolean(
+                    ownerDiscordId && discordId && discordId === ownerDiscordId,
+                );
             }
 
             return session;

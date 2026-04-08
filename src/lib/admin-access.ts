@@ -5,16 +5,12 @@ import { prisma } from "@/lib/prisma";
 export type GuildAccessScope = "roster" | "payout" | "configuration" | "archives";
 export type GuildAccessMode = "read" | "write";
 
-export async function getOwnerGuardStatus() {
+async function getCurrentAdminIdentity() {
     const session = await getServerSession(authOptions);
     const ownerDiscordId = process.env.OWNER_DISCORD_ID;
 
     if (!session?.user?.id && !session?.user?.email) {
         return { status: "unauthorized" as const, session, ownerDiscordId };
-    }
-
-    if (!ownerDiscordId) {
-        return { status: "misconfigured" as const, session, ownerDiscordId };
     }
 
     const dbUser = await prisma.user.findFirst({
@@ -59,11 +55,52 @@ export async function getOwnerGuardStatus() {
         }
     }
 
-    if (!effectiveDiscordId || effectiveDiscordId !== ownerDiscordId) {
-        return { status: "forbidden" as const, session, ownerDiscordId };
+    const globalAdmin = await isGlobalAdmin(dbUser.id);
+    const isOwner = Boolean(
+        ownerDiscordId && effectiveDiscordId && effectiveDiscordId === ownerDiscordId,
+    );
+
+    return {
+        status: "ok" as const,
+        session,
+        ownerDiscordId,
+        userId: dbUser.id,
+        effectiveDiscordId,
+        isOwner,
+        isGlobalAdmin: globalAdmin,
+    };
+}
+
+export async function getOwnerGuardStatus() {
+    const identity = await getCurrentAdminIdentity();
+
+    if (identity.status !== "ok") {
+        return identity;
     }
 
-    return { status: "ok" as const, session, ownerDiscordId };
+    if (!identity.ownerDiscordId) {
+        return { ...identity, status: "misconfigured" as const };
+    }
+
+    if (!identity.isOwner) {
+        return { ...identity, status: "forbidden" as const };
+    }
+
+    return identity;
+}
+
+export async function getAdminGuardStatus() {
+    const identity = await getCurrentAdminIdentity();
+
+    if (identity.status !== "ok") {
+        return identity;
+    }
+
+    if (!identity.isOwner && !identity.isGlobalAdmin) {
+        return { ...identity, status: "forbidden" as const };
+    }
+
+    return identity;
 }
 
 export async function isGlobalAdmin(userId: string): Promise<boolean> {

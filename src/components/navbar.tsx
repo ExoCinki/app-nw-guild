@@ -41,10 +41,8 @@ export function Navbar() {
     enabled: status === "authenticated",
   });
 
-  const ownerDiscordId = process.env.NEXT_PUBLIC_OWNER_DISCORD_ID;
-  const isOwner = Boolean(
-    ownerDiscordId && session?.user?.discordId === ownerDiscordId,
-  );
+  const isOwner = Boolean(session?.user?.isOwner);
+  const canAccessAdmin = Boolean(isOwner || session?.user?.isGlobalAdmin);
 
   const isActive = (path: string) =>
     pathname === path ? "text-sky-400" : "text-slate-300 hover:text-slate-100";
@@ -147,7 +145,7 @@ export function Navbar() {
                 </Link>
               </div>
 
-              {isOwner ? (
+              {canAccessAdmin ? (
                 <Link
                   href="/admin"
                   className={`text-sm font-medium transition ${isActive("/admin")}`}

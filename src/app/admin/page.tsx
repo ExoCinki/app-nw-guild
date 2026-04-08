@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { GlobalAdminManager } from "@/components/global-admin-manager";
-import { getOwnerGuardStatus } from "@/lib/admin-access";
+import { getAdminGuardStatus } from "@/lib/admin-access";
 
 export default async function AdminPage() {
-  const ownerStatus = await getOwnerGuardStatus();
+  const adminStatus = await getAdminGuardStatus();
 
-  if (ownerStatus.status !== "ok") {
+  if (adminStatus.status !== "ok") {
     redirect("/");
   }
 
@@ -20,7 +20,7 @@ export default async function AdminPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-6">
-          <GlobalAdminManager />
+          <GlobalAdminManager isOwner={adminStatus.isOwner} />
         </div>
       </div>
     </main>
