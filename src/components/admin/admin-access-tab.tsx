@@ -20,6 +20,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedGuildId, setSelectedGuildId] = useState("");
+  const [selectedGuildIds, setSelectedGuildIds] = useState<string[]>([]);
   const [canReadRoster, setCanReadRoster] = useState(true);
   const [canWriteRoster, setCanWriteRoster] = useState(true);
   const [canReadPayout, setCanReadPayout] = useState(true);
@@ -55,37 +56,55 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
     setCanWriteArchives(match?.canWriteArchives ?? true);
   }
 
+  function toggleGuildSelection(guildId: string) {
+    if (!guildId) return;
+    setSelectedGuildIds((prev) =>
+      prev.includes(guildId)
+        ? prev.filter((id) => id !== guildId)
+        : [...prev, guildId],
+    );
+  }
+
   const accessMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch("/api/admin/global", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          type: "set-access",
-          userId: selectedUserId,
-          guildId: selectedGuildId,
-          canReadRoster,
-          canWriteRoster,
-          canReadPayout,
-          canWritePayout,
-          canReadConfiguration,
-          canWriteConfiguration,
-          canReadArchives,
-          canWriteArchives,
+    mutationFn: async ({ guildIds }: { guildIds: string[] }) => {
+      await Promise.all(
+        guildIds.map(async (guildId) => {
+          const response = await fetch("/api/admin/global", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              type: "set-access",
+              userId: selectedUserId,
+              guildId,
+              canReadRoster,
+              canWriteRoster,
+              canReadPayout,
+              canWritePayout,
+              canReadConfiguration,
+              canWriteConfiguration,
+              canReadArchives,
+              canWriteArchives,
+            }),
+          });
+          if (!response.ok) {
+            const payload = (await response.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(payload?.error ?? "Unable to save access");
+          }
         }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(payload?.error ?? "Unable to save access");
-      }
-      return response.json();
+      );
+
+      return { count: guildIds.length };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["admin-global"] });
-      toast.success("Access rights updated");
+      toast.success(
+        result.count > 1
+          ? `Access rights updated on ${result.count} servers`
+          : "Access rights updated",
+      );
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -114,7 +133,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
       </div>
       <div className="mb-3 text-xs text-slate-500">
         Choisis un utilisateur, puis un serveur, et enregistre. Tu peux refaire
-        l&apos;action pour plusieurs serveurs.
+        l&apos;action pour plusieurs serveurs, ou utiliser la sélection
+        multiple.
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -152,6 +172,48 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="mt-3 rounded border border-slate-700/70 bg-slate-800/40 p-3">
+        <div className="mb-2 text-xs font-medium text-slate-300">
+          Sélection multiple de serveurs
+        </div>
+        <div className="mb-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => toggleGuildSelection(selectedGuildId)}
+            disabled={!selectedGuildId}
+            className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-100 hover:bg-slate-600 disabled:opacity-50"
+          >
+            Ajouter le serveur sélectionné
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedGuildIds([])}
+            disabled={selectedGuildIds.length === 0}
+            className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-100 hover:bg-slate-600 disabled:opacity-50"
+          >
+            Vider la sélection
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {selectedGuildIds.length === 0 ? (
+            <span className="text-xs text-slate-500">
+              Aucun serveur sélectionné
+            </span>
+          ) : (
+            selectedGuildIds.map((guildId) => (
+              <button
+                key={guildId}
+                type="button"
+                onClick={() => toggleGuildSelection(guildId)}
+                className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
+              >
+                {guildById.get(guildId)?.name ?? guildId} ×
+              </button>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="mt-4 space-y-3 text-sm text-slate-200">
@@ -316,16 +378,31 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
       <button
         type="button"
         onClick={() => {
-          if (!selectedUserId || !selectedGuildId) {
-            toast.error("Select a user and a server first");
+          if (!selectedUserId) {
+            toast.error("Select a user first");
             return;
           }
-          accessMutation.mutate();
+
+          const targetGuildIds =
+            selectedGuildIds.length > 0
+              ? selectedGuildIds
+              : selectedGuildId
+                ? [selectedGuildId]
+                : [];
+
+          if (targetGuildIds.length === 0) {
+            toast.error("Select at least one server");
+            return;
+          }
+
+          accessMutation.mutate({ guildIds: targetGuildIds });
         }}
         disabled={accessMutation.isPending}
         className="mt-4 rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600 disabled:opacity-50"
       >
-        Enregistrer les droits
+        {selectedGuildIds.length > 1
+          ? `Enregistrer les droits (${selectedGuildIds.length} serveurs)`
+          : "Enregistrer les droits"}
       </button>
 
       <div className="mt-6">
@@ -386,6 +463,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                         onClick={() => {
                           setSelectedUserId(row.userId);
                           setSelectedGuildId(row.discordGuildId);
+                          setSelectedGuildIds([row.discordGuildId]);
                           applyAccessPreset(row.userId, row.discordGuildId);
                         }}
                         className="rounded bg-slate-700 px-2 py-1 hover:bg-slate-600"
