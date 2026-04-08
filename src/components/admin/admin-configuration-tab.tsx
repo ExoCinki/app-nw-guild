@@ -20,7 +20,6 @@ type EditableFieldKey =
   | "apiKey"
   | "channelId"
   | "zooMemberRoleId"
-  | "zooMemberRoleName"
   | "warsCount"
   | "racesCount"
   | "invasionsCount"
@@ -94,7 +93,6 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
   const [apiKey, setApiKey] = useState("");
   const [channelId, setChannelId] = useState("");
   const [zooMemberRoleId, setZooMemberRoleId] = useState("");
-  const [zooMemberRoleName, setZooMemberRoleName] = useState("");
   const [warsCount, setWarsCount] = useState("0");
   const [racesCount, setRacesCount] = useState("0");
   const [invasionsCount, setInvasionsCount] = useState("0");
@@ -123,7 +121,6 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     setApiKey(selectedConfig?.apiKey ?? "");
     setChannelId(selectedConfig?.channelId ?? "");
     setZooMemberRoleId(selectedConfig?.zooMemberRoleId ?? "");
-    setZooMemberRoleName(selectedConfig?.zooMemberRoleName ?? "");
     setWarsCount(String(selectedConfig?.warsCount ?? 0));
     setRacesCount(String(selectedConfig?.racesCount ?? 0));
     setInvasionsCount(String(selectedConfig?.invasionsCount ?? 0));
@@ -139,7 +136,6 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
       apiKey: string;
       channelId: string;
       zooMemberRoleId: string;
-      zooMemberRoleName: string;
       warsCount: number;
       racesCount: number;
       invasionsCount: number;
@@ -179,10 +175,6 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     }
     if (field === "zooMemberRoleId") {
       setZooMemberRoleId(selectedConfig?.zooMemberRoleId ?? "");
-      return;
-    }
-    if (field === "zooMemberRoleName") {
-      setZooMemberRoleName(selectedConfig?.zooMemberRoleName ?? "");
       return;
     }
     if (field === "warsCount") {
@@ -254,7 +246,6 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
         apiKey,
         channelId,
         zooMemberRoleId,
-        zooMemberRoleName,
         warsCount: parsedWars,
         racesCount: parsedRaces,
         invasionsCount: parsedInvasions,
@@ -393,40 +384,6 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
                 setEditingField(null);
               }}
               onEdit={() => setEditingField("zooMemberRoleId")}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label
-            htmlFor="admin-cfg-zooMemberRoleName"
-            className="mb-2 block text-sm font-medium text-slate-300"
-          >
-            Zoo role name
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              id="admin-cfg-zooMemberRoleName"
-              value={zooMemberRoleName}
-              onChange={(e) => setZooMemberRoleName(e.target.value)}
-              placeholder="ex: ZOO 2.0"
-              disabled={
-                editingField !== "zooMemberRoleName" ||
-                pendingField === "zooMemberRoleName"
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
-            />
-            <EditButtons
-              isEditing={editingField === "zooMemberRoleName"}
-              isPending={pendingField === "zooMemberRoleName"}
-              onSave={() => {
-                void saveField("zooMemberRoleName");
-              }}
-              onCancel={() => {
-                resetField("zooMemberRoleName");
-                setEditingField(null);
-              }}
-              onEdit={() => setEditingField("zooMemberRoleName")}
             />
           </div>
         </div>
