@@ -1,8 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck, faPencil, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { LoadingIndicator } from "@/components/loading-indicator";
 import type {
   AdminConfiguration,
   AdminGuild,
@@ -13,10 +16,97 @@ type Props = {
   configurations: AdminConfiguration[];
 };
 
+type EditableFieldKey =
+  | "apiKey"
+  | "channelId"
+  | "zooMemberRoleId"
+  | "zooMemberRoleName"
+  | "warsCount"
+  | "racesCount"
+  | "invasionsCount"
+  | "vodsCount"
+  | "reviewsCount"
+  | "bonusCount";
+
+function maskApiKey(key: string): string {
+  if (!key) return "";
+  if (key.length <= 12) return "*".repeat(key.length);
+  return key.slice(0, 8) + "..." + key.slice(-4);
+}
+
+function EditButtons({
+  isEditing,
+  isPending,
+  onSave,
+  onCancel,
+  onEdit,
+}: {
+  isEditing: boolean;
+  isPending: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+  onEdit: () => void;
+}) {
+  if (isEditing) {
+    return (
+      <>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center rounded-md border border-emerald-500/60 px-1.5 py-1 text-emerald-400/70 disabled:opacity-40"
+          onClick={onSave}
+          disabled={isPending}
+          aria-label="Confirm"
+        >
+          {isPending ? (
+            <LoadingIndicator />
+          ) : (
+            <FontAwesomeIcon icon={faCheck} className="h-2.5 w-2.5" />
+          )}
+        </button>
+        <button
+          type="button"
+          className="rounded-md border border-rose-500/60 px-1.5 py-1 text-rose-400/70 disabled:opacity-40"
+          onClick={onCancel}
+          disabled={isPending}
+          aria-label="Cancel"
+        >
+          <FontAwesomeIcon icon={faXmark} className="h-2.5 w-2.5" />
+        </button>
+      </>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="rounded-md border border-slate-700/60 px-1.5 py-1 text-slate-500 transition-colors hover:text-slate-300"
+      onClick={onEdit}
+      aria-label="Edit"
+    >
+      <FontAwesomeIcon icon={faPencil} className="h-2.5 w-2.5" />
+    </button>
+  );
+}
+
 export function AdminConfigurationTab({ guilds, configurations }: Props) {
   const queryClient = useQueryClient();
-  const formRef = useRef<HTMLFormElement>(null);
   const [configGuildId, setConfigGuildId] = useState("");
+
+  const [apiKey, setApiKey] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [zooMemberRoleId, setZooMemberRoleId] = useState("");
+  const [zooMemberRoleName, setZooMemberRoleName] = useState("");
+  const [warsCount, setWarsCount] = useState("0");
+  const [racesCount, setRacesCount] = useState("0");
+  const [invasionsCount, setInvasionsCount] = useState("0");
+  const [vodsCount, setVodsCount] = useState("0");
+  const [reviewsCount, setReviewsCount] = useState("0");
+  const [bonusCount, setBonusCount] = useState("0");
+  const [editingField, setEditingField] = useState<EditableFieldKey | null>(
+    null,
+  );
+  const [pendingField, setPendingField] = useState<EditableFieldKey | null>(
+    null,
+  );
 
   const selectedGuildExists = guilds.some(
     (guild) => guild.discordGuildId === configGuildId,
@@ -29,54 +119,45 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     (item) => item.discordGuildId === resolvedConfigGuildId,
   );
 
+  useEffect(() => {
+    setApiKey(selectedConfig?.apiKey ?? "");
+    setChannelId(selectedConfig?.channelId ?? "");
+    setZooMemberRoleId(selectedConfig?.zooMemberRoleId ?? "");
+    setZooMemberRoleName(selectedConfig?.zooMemberRoleName ?? "");
+    setWarsCount(String(selectedConfig?.warsCount ?? 0));
+    setRacesCount(String(selectedConfig?.racesCount ?? 0));
+    setInvasionsCount(String(selectedConfig?.invasionsCount ?? 0));
+    setVodsCount(String(selectedConfig?.vodsCount ?? 0));
+    setReviewsCount(String(selectedConfig?.reviewsCount ?? 0));
+    setBonusCount(String(selectedConfig?.bonusCount ?? 0));
+    setEditingField(null);
+  }, [resolvedConfigGuildId, selectedConfig]);
+
   const configMutation = useMutation({
     mutationFn: async (payload: {
       guildId: string;
-      channelId: string;
       apiKey: string;
+      channelId: string;
       zooMemberRoleId: string;
       zooMemberRoleName: string;
-      warsCount: string;
-      racesCount: string;
-      invasionsCount: string;
-      vodsCount: string;
-      reviewsCount: string;
-      bonusCount: string;
+      warsCount: number;
+      racesCount: number;
+      invasionsCount: number;
+      vodsCount: number;
+      reviewsCount: number;
+      bonusCount: number;
     }) => {
-      const parseIntField = (value: string, label: string) => {
-        const parsed = Number.parseInt(value, 10);
-        if (!Number.isInteger(parsed) || parsed < 0) {
-          throw new Error(`${label} must be an integer >= 0`);
-        }
-        return parsed;
-      };
       const response = await fetch("/api/admin/global", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          type: "set-config",
-          guildId: payload.guildId,
-          channelId: payload.channelId,
-          apiKey: payload.apiKey,
-          zooMemberRoleId: payload.zooMemberRoleId,
-          zooMemberRoleName: payload.zooMemberRoleName,
-          warsCount: parseIntField(payload.warsCount, "warsCount"),
-          racesCount: parseIntField(payload.racesCount, "racesCount"),
-          invasionsCount: parseIntField(
-            payload.invasionsCount,
-            "invasionsCount",
-          ),
-          vodsCount: parseIntField(payload.vodsCount, "vodsCount"),
-          reviewsCount: parseIntField(payload.reviewsCount, "reviewsCount"),
-          bonusCount: parseIntField(payload.bonusCount, "bonusCount"),
-        }),
+        body: JSON.stringify({ type: "set-config", ...payload }),
       });
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
+        const body = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(payload?.error ?? "Unable to save configuration");
+        throw new Error(body?.error ?? "Unable to save configuration");
       }
       return response.json();
     },
@@ -87,217 +168,481 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     onError: (error: Error) => toast.error(error.message),
   });
 
+  function resetField(field: EditableFieldKey) {
+    if (field === "apiKey") {
+      setApiKey(selectedConfig?.apiKey ?? "");
+      return;
+    }
+    if (field === "channelId") {
+      setChannelId(selectedConfig?.channelId ?? "");
+      return;
+    }
+    if (field === "zooMemberRoleId") {
+      setZooMemberRoleId(selectedConfig?.zooMemberRoleId ?? "");
+      return;
+    }
+    if (field === "zooMemberRoleName") {
+      setZooMemberRoleName(selectedConfig?.zooMemberRoleName ?? "");
+      return;
+    }
+    if (field === "warsCount") {
+      setWarsCount(String(selectedConfig?.warsCount ?? 0));
+      return;
+    }
+    if (field === "racesCount") {
+      setRacesCount(String(selectedConfig?.racesCount ?? 0));
+      return;
+    }
+    if (field === "invasionsCount") {
+      setInvasionsCount(String(selectedConfig?.invasionsCount ?? 0));
+      return;
+    }
+    if (field === "vodsCount") {
+      setVodsCount(String(selectedConfig?.vodsCount ?? 0));
+      return;
+    }
+    if (field === "reviewsCount") {
+      setReviewsCount(String(selectedConfig?.reviewsCount ?? 0));
+      return;
+    }
+    setBonusCount(String(selectedConfig?.bonusCount ?? 0));
+  }
+
+  async function saveField(field: EditableFieldKey) {
+    if (!resolvedConfigGuildId) {
+      toast.error("Select a server first");
+      return;
+    }
+
+    const parseCount = (value: string, label: string) => {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        throw new Error(`${label} must be an integer >= 0`);
+      }
+      return parsed;
+    };
+
+    let parsedWars = selectedConfig?.warsCount ?? 0;
+    let parsedRaces = selectedConfig?.racesCount ?? 0;
+    let parsedInvasions = selectedConfig?.invasionsCount ?? 0;
+    let parsedVods = selectedConfig?.vodsCount ?? 0;
+    let parsedReviews = selectedConfig?.reviewsCount ?? 0;
+    let parsedBonus = selectedConfig?.bonusCount ?? 0;
+
+    try {
+      if (field === "warsCount")
+        parsedWars = parseCount(warsCount, "War points");
+      else if (field === "racesCount")
+        parsedRaces = parseCount(racesCount, "Race points");
+      else if (field === "invasionsCount")
+        parsedInvasions = parseCount(invasionsCount, "Invasion points");
+      else if (field === "vodsCount")
+        parsedVods = parseCount(vodsCount, "VOD points");
+      else if (field === "reviewsCount")
+        parsedReviews = parseCount(reviewsCount, "Review points");
+      else if (field === "bonusCount")
+        parsedBonus = parseCount(bonusCount, "Bonus points");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid value");
+      return;
+    }
+
+    try {
+      setPendingField(field);
+      await configMutation.mutateAsync({
+        guildId: resolvedConfigGuildId,
+        apiKey,
+        channelId,
+        zooMemberRoleId,
+        zooMemberRoleName,
+        warsCount: parsedWars,
+        racesCount: parsedRaces,
+        invasionsCount: parsedInvasions,
+        vodsCount: parsedVods,
+        reviewsCount: parsedReviews,
+        bonusCount: parsedBonus,
+      });
+      setEditingField(null);
+    } catch {
+      // error handled by onError
+    } finally {
+      setPendingField(null);
+    }
+  }
+
   return (
     <section className="rounded-xl border border-slate-800/60 bg-slate-900/70 p-4 sm:p-6">
       <div className="mb-4 text-lg font-semibold text-slate-100">
         Configuration serveur (admin global)
       </div>
-      <select
-        value={resolvedConfigGuildId}
-        onChange={(e) => {
-          setConfigGuildId(e.target.value);
-        }}
-        className="mb-4 w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-      >
-        <option value="">Selectionner un serveur</option>
-        {guilds.map((guild) => (
-          <option key={guild.discordGuildId} value={guild.discordGuildId}>
-            {guild.name ?? guild.discordGuildId}
-          </option>
-        ))}
-      </select>
 
-      <form
-        ref={formRef}
-        key={resolvedConfigGuildId}
-        className="grid grid-cols-1 gap-3 sm:grid-cols-2"
-      >
+      <div className="mb-6">
+        <label
+          htmlFor="admin-cfg-guild"
+          className="mb-2 block text-sm font-medium text-slate-300"
+        >
+          Serveur
+        </label>
+        <select
+          id="admin-cfg-guild"
+          value={resolvedConfigGuildId}
+          onChange={(e) => setConfigGuildId(e.target.value)}
+          className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+        >
+          <option value="">Selectionner un serveur</option>
+          {guilds.map((guild) => (
+            <option key={guild.discordGuildId} value={guild.discordGuildId}>
+              {guild.name ?? guild.discordGuildId}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label
-            htmlFor="cfg-apiKey"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-apiKey"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             API key
           </label>
-          <input
-            id="cfg-apiKey"
-            name="apiKey"
-            defaultValue={selectedConfig?.apiKey ?? ""}
-            placeholder="ex: sk_live_xxx"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-apiKey"
+              value={editingField === "apiKey" ? apiKey : maskApiKey(apiKey)}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="ex: sk_live_xxx"
+              disabled={editingField !== "apiKey" || pendingField === "apiKey"}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "apiKey"}
+              isPending={pendingField === "apiKey"}
+              onSave={() => {
+                void saveField("apiKey");
+              }}
+              onCancel={() => {
+                resetField("apiKey");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("apiKey")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-channelId"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-channelId"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
-            Channel ID
+            Discord Channel ID
           </label>
-          <input
-            id="cfg-channelId"
-            name="channelId"
-            defaultValue={selectedConfig?.channelId ?? ""}
-            placeholder="ex: 123456789012345678"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-channelId"
+              value={channelId}
+              onChange={(e) => setChannelId(e.target.value)}
+              placeholder="ex: 123456789012345678"
+              disabled={
+                editingField !== "channelId" || pendingField === "channelId"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "channelId"}
+              isPending={pendingField === "channelId"}
+              onSave={() => {
+                void saveField("channelId");
+              }}
+              onCancel={() => {
+                resetField("channelId");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("channelId")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-zooMemberRoleId"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-zooMemberRoleId"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Zoo role ID
           </label>
-          <input
-            id="cfg-zooMemberRoleId"
-            name="zooMemberRoleId"
-            defaultValue={selectedConfig?.zooMemberRoleId ?? ""}
-            placeholder="ex: 123456789012345678"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-zooMemberRoleId"
+              value={zooMemberRoleId}
+              onChange={(e) => setZooMemberRoleId(e.target.value)}
+              placeholder="ex: 123456789012345678"
+              disabled={
+                editingField !== "zooMemberRoleId" ||
+                pendingField === "zooMemberRoleId"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "zooMemberRoleId"}
+              isPending={pendingField === "zooMemberRoleId"}
+              onSave={() => {
+                void saveField("zooMemberRoleId");
+              }}
+              onCancel={() => {
+                resetField("zooMemberRoleId");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("zooMemberRoleId")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-zooMemberRoleName"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-zooMemberRoleName"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Zoo role name
           </label>
-          <input
-            id="cfg-zooMemberRoleName"
-            name="zooMemberRoleName"
-            defaultValue={selectedConfig?.zooMemberRoleName ?? ""}
-            placeholder="ex: ZOO 2.0"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-zooMemberRoleName"
+              value={zooMemberRoleName}
+              onChange={(e) => setZooMemberRoleName(e.target.value)}
+              placeholder="ex: ZOO 2.0"
+              disabled={
+                editingField !== "zooMemberRoleName" ||
+                pendingField === "zooMemberRoleName"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "zooMemberRoleName"}
+              isPending={pendingField === "zooMemberRoleName"}
+              onSave={() => {
+                void saveField("zooMemberRoleName");
+              }}
+              onCancel={() => {
+                resetField("zooMemberRoleName");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("zooMemberRoleName")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-warsCount"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-warsCount"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Points par War
           </label>
-          <input
-            id="cfg-warsCount"
-            name="warsCount"
-            defaultValue={String(selectedConfig?.warsCount ?? 0)}
-            placeholder="0"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-warsCount"
+              type="number"
+              min={0}
+              step={1}
+              value={warsCount}
+              onChange={(e) => setWarsCount(e.target.value)}
+              disabled={
+                editingField !== "warsCount" || pendingField === "warsCount"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "warsCount"}
+              isPending={pendingField === "warsCount"}
+              onSave={() => {
+                void saveField("warsCount");
+              }}
+              onCancel={() => {
+                resetField("warsCount");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("warsCount")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-racesCount"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-racesCount"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Points par Race
           </label>
-          <input
-            id="cfg-racesCount"
-            name="racesCount"
-            defaultValue={String(selectedConfig?.racesCount ?? 0)}
-            placeholder="0"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-racesCount"
+              type="number"
+              min={0}
+              step={1}
+              value={racesCount}
+              onChange={(e) => setRacesCount(e.target.value)}
+              disabled={
+                editingField !== "racesCount" || pendingField === "racesCount"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "racesCount"}
+              isPending={pendingField === "racesCount"}
+              onSave={() => {
+                void saveField("racesCount");
+              }}
+              onCancel={() => {
+                resetField("racesCount");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("racesCount")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-invasionsCount"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-invasionsCount"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Points par Invasion
           </label>
-          <input
-            id="cfg-invasionsCount"
-            name="invasionsCount"
-            defaultValue={String(selectedConfig?.invasionsCount ?? 0)}
-            placeholder="0"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-invasionsCount"
+              type="number"
+              min={0}
+              step={1}
+              value={invasionsCount}
+              onChange={(e) => setInvasionsCount(e.target.value)}
+              disabled={
+                editingField !== "invasionsCount" ||
+                pendingField === "invasionsCount"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "invasionsCount"}
+              isPending={pendingField === "invasionsCount"}
+              onSave={() => {
+                void saveField("invasionsCount");
+              }}
+              onCancel={() => {
+                resetField("invasionsCount");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("invasionsCount")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-vodsCount"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-vodsCount"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Points par VOD
           </label>
-          <input
-            id="cfg-vodsCount"
-            name="vodsCount"
-            defaultValue={String(selectedConfig?.vodsCount ?? 0)}
-            placeholder="0"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-vodsCount"
+              type="number"
+              min={0}
+              step={1}
+              value={vodsCount}
+              onChange={(e) => setVodsCount(e.target.value)}
+              disabled={
+                editingField !== "vodsCount" || pendingField === "vodsCount"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "vodsCount"}
+              isPending={pendingField === "vodsCount"}
+              onSave={() => {
+                void saveField("vodsCount");
+              }}
+              onCancel={() => {
+                resetField("vodsCount");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("vodsCount")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-reviewsCount"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-reviewsCount"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Points par Review
           </label>
-          <input
-            id="cfg-reviewsCount"
-            name="reviewsCount"
-            defaultValue={String(selectedConfig?.reviewsCount ?? 0)}
-            placeholder="0"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-reviewsCount"
+              type="number"
+              min={0}
+              step={1}
+              value={reviewsCount}
+              onChange={(e) => setReviewsCount(e.target.value)}
+              disabled={
+                editingField !== "reviewsCount" ||
+                pendingField === "reviewsCount"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "reviewsCount"}
+              isPending={pendingField === "reviewsCount"}
+              onSave={() => {
+                void saveField("reviewsCount");
+              }}
+              onCancel={() => {
+                resetField("reviewsCount");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("reviewsCount")}
+            />
+          </div>
         </div>
+
         <div>
           <label
-            htmlFor="cfg-bonusCount"
-            className="mb-1 block text-xs font-medium text-slate-400"
+            htmlFor="admin-cfg-bonusCount"
+            className="mb-2 block text-sm font-medium text-slate-300"
           >
             Points par Bonus
           </label>
-          <input
-            id="cfg-bonusCount"
-            name="bonusCount"
-            defaultValue={String(selectedConfig?.bonusCount ?? 0)}
-            placeholder="0"
-            className="w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              id="admin-cfg-bonusCount"
+              type="number"
+              min={0}
+              step={1}
+              value={bonusCount}
+              onChange={(e) => setBonusCount(e.target.value)}
+              disabled={
+                editingField !== "bonusCount" || pendingField === "bonusCount"
+              }
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+            />
+            <EditButtons
+              isEditing={editingField === "bonusCount"}
+              isPending={pendingField === "bonusCount"}
+              onSave={() => {
+                void saveField("bonusCount");
+              }}
+              onCancel={() => {
+                resetField("bonusCount");
+                setEditingField(null);
+              }}
+              onEdit={() => setEditingField("bonusCount")}
+            />
+          </div>
         </div>
-      </form>
-
-      <button
-        type="button"
-        onClick={() => {
-          if (!resolvedConfigGuildId) {
-            toast.error("Select a server first");
-            return;
-          }
-
-          const currentForm = formRef.current;
-          if (!currentForm) {
-            toast.error("Configuration form unavailable");
-            return;
-          }
-
-          const formData = new FormData(currentForm);
-          configMutation.mutate({
-            guildId: resolvedConfigGuildId,
-            apiKey: String(formData.get("apiKey") ?? ""),
-            channelId: String(formData.get("channelId") ?? ""),
-            zooMemberRoleId: String(formData.get("zooMemberRoleId") ?? ""),
-            zooMemberRoleName: String(formData.get("zooMemberRoleName") ?? ""),
-            warsCount: String(formData.get("warsCount") ?? "0"),
-            racesCount: String(formData.get("racesCount") ?? "0"),
-            invasionsCount: String(formData.get("invasionsCount") ?? "0"),
-            vodsCount: String(formData.get("vodsCount") ?? "0"),
-            reviewsCount: String(formData.get("reviewsCount") ?? "0"),
-            bonusCount: String(formData.get("bonusCount") ?? "0"),
-          });
-        }}
-        disabled={configMutation.isPending}
-        className="mt-4 rounded bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
-      >
-        Enregistrer la configuration
-      </button>
+      </div>
     </section>
   );
 }
