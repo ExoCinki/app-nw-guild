@@ -102,18 +102,27 @@ export function ProfileCard() {
     queryKey: ["me"],
     queryFn: getMe,
     enabled: status === "authenticated",
+    staleTime: 10 * 60 * 1000, // 10 minutes - user data changes rarely
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const whitelistedGuildsQuery = useQuery({
     queryKey: ["guilds", "whitelisted"],
     queryFn: getWhitelistedGuilds,
     enabled: status === "authenticated",
+    staleTime: 10 * 60 * 1000, // 10 minutes - guilds list changes rarely
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const selectedGuildQuery = useQuery({
     queryKey: ["selected-guild"],
     queryFn: getSelectedGuild,
     enabled: status === "authenticated",
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const selectGuildMutation = useMutation({

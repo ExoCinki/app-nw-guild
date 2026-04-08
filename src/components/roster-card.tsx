@@ -362,6 +362,45 @@ async function saveGroup(payload: PostGroupPayload): Promise<RosterResponse> {
   return res.json() as Promise<RosterResponse>;
 }
 
+async function updateSlot(payload: {
+  guildId?: string;
+  rosterIndex: 1 | 2;
+  groupNumber: number;
+  slotPosition: number;
+  playerName: string | null;
+  role: string | null;
+}): Promise<{
+  slot: {
+    rosterIndex: number;
+    groupNumber: number;
+    slotPosition: number;
+    playerName: string | null;
+    role: string | null;
+  };
+}> {
+  const res = await fetch("/api/roster/slot", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to update slot.");
+  }
+  return res.json() as Promise<{
+    slot: {
+      rosterIndex: number;
+      groupNumber: number;
+      slotPosition: number;
+      playerName: string | null;
+      role: string | null;
+    };
+  }>;
+}
+
 async function archiveRoster(): Promise<{
   success: boolean;
   archiveId: string;
@@ -474,6 +513,7 @@ function GroupCard({
   onSaved,
   onDropParticipant,
   pendingDropTarget,
+  queryClient,
 }: {
   rosterIndex: 1 | 2;
   group: RosterGroupData;
@@ -486,6 +526,7 @@ function GroupCard({
     role?: string | null;
   }) => void;
   pendingDropTarget: string | null;
+  queryClient: ReturnType<typeof useQueryClient>;
 }) {
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState(false);
@@ -527,28 +568,73 @@ function GroupCard({
 
     setPending(true);
     try {
-      const data = await saveGroup({
+      // Optimistic update: update local cache immediately
+      const currentData = queryClient.getQueryData(["roster"]) as
+        | RosterResponse
+        | undefined;
+      if (currentData && editingSlotPosition !== null) {
+        const updatedData: RosterResponse = {
+          ...currentData,
+          roster: {
+            ...currentData.roster,
+            groups: currentData.roster.groups.map((g) =>
+              g.groupNumber === group.groupNumber
+                ? {
+                    ...g,
+                    slots: g.slots.map((s) =>
+                      s.position === editingSlotPosition
+                        ? {
+                            ...s,
+                            playerName: trimmedName,
+                            role: editingRole,
+                          }
+                        : s,
+                    ),
+                  }
+                : g,
+            ),
+            secondGroups: currentData.roster.secondGroups.map((g) =>
+              g.groupNumber === group.groupNumber
+                ? {
+                    ...g,
+                    slots: g.slots.map((s) =>
+                      s.position === editingSlotPosition
+                        ? {
+                            ...s,
+                            playerName: trimmedName,
+                            role: editingRole,
+                          }
+                        : s,
+                    ),
+                  }
+                : g,
+            ),
+          },
+        };
+        queryClient.setQueryData(["roster"], updatedData);
+      }
+
+      // Send to server with lightweight endpoint
+      await updateSlot({
         rosterIndex,
         groupNumber: group.groupNumber,
-        name: group.name,
-        slots: group.slots.map((currentSlot) => ({
-          position: currentSlot.position,
-          playerName:
-            currentSlot.position === editingSlotPosition
-              ? trimmedName
-              : currentSlot.playerName,
-          role:
-            currentSlot.position === editingSlotPosition
-              ? editingRole
-              : currentSlot.role,
-        })),
+        slotPosition: editingSlotPosition!,
+        playerName: trimmedName,
+        role: editingRole,
       });
-      onSaved(data);
+
+      // Refetch to verify data consistency
+      const updated = await fetchRoster();
+      queryClient.setQueryData(["roster"], updated);
+      onSaved(updated);
+
       setEditingSlotPosition(null);
       setEditingPlayerName("");
       setEditingRole(null);
       toast.success("Player added to roster.");
     } catch (error) {
+      // Refetch to restore correct state on error
+      queryClient.invalidateQueries({ queryKey: ["roster"] });
       toast.error(error instanceof Error ? error.message : "Unknown error.");
     } finally {
       setPending(false);
@@ -785,25 +871,66 @@ function GroupCard({
                   onClick={async () => {
                     setPending(true);
                     try {
-                      const data = await saveGroup({
+                      // Optimistic update: remove player immediately
+                      const currentData = queryClient.getQueryData([
+                        "roster",
+                      ]) as RosterResponse | undefined;
+                      if (currentData) {
+                        const updatedData: RosterResponse = {
+                          ...currentData,
+                          roster: {
+                            ...currentData.roster,
+                            groups: currentData.roster.groups.map((g) =>
+                              g.groupNumber === group.groupNumber
+                                ? {
+                                    ...g,
+                                    slots: g.slots.map((s) =>
+                                      s.position === slot.position
+                                        ? { ...s, playerName: null, role: null }
+                                        : s,
+                                    ),
+                                  }
+                                : g,
+                            ),
+                            secondGroups: currentData.roster.secondGroups.map(
+                              (g) =>
+                                g.groupNumber === group.groupNumber
+                                  ? {
+                                      ...g,
+                                      slots: g.slots.map((s) =>
+                                        s.position === slot.position
+                                          ? {
+                                              ...s,
+                                              playerName: null,
+                                              role: null,
+                                            }
+                                          : s,
+                                      ),
+                                    }
+                                  : g,
+                            ),
+                          },
+                        };
+                        queryClient.setQueryData(["roster"], updatedData);
+                      }
+
+                      // Send to server with lightweight endpoint
+                      await updateSlot({
                         rosterIndex,
                         groupNumber: group.groupNumber,
-                        name: group.name,
-                        slots: group.slots.map((currentSlot) => ({
-                          position: currentSlot.position,
-                          playerName:
-                            currentSlot.position === slot.position
-                              ? null
-                              : currentSlot.playerName,
-                          role:
-                            currentSlot.position === slot.position
-                              ? null
-                              : currentSlot.role,
-                        })),
+                        slotPosition: slot.position,
+                        playerName: null,
+                        role: null,
                       });
-                      onSaved(data);
+
+                      // Refetch to verify
+                      const updated = await fetchRoster();
+                      queryClient.setQueryData(["roster"], updated);
+                      onSaved(updated);
+
                       toast.success("Player removed from roster.");
                     } catch (error) {
+                      queryClient.invalidateQueries({ queryKey: ["roster"] });
                       toast.error(
                         error instanceof Error
                           ? error.message
@@ -845,7 +972,10 @@ export function RosterCard() {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["roster"],
     queryFn: fetchRoster,
-    refetchOnWindowFocus: true,
+    staleTime: 2 * 60 * 1000, // Keep data fresh for 2 minutes
+    refetchOnWindowFocus: false, // Disabled since we use optimistic updates
+    refetchOnReconnect: true, // Only refetch if connection is restored
+    refetchOnMount: false,
   });
 
   const eventsQuery = useQuery({
@@ -1006,28 +1136,72 @@ export function RosterCard() {
     );
 
     try {
-      const updated = await saveGroup({
+      // Optimistic update
+      const currentData = queryClient.getQueryData(["roster"]) as
+        | RosterResponse
+        | undefined;
+      if (currentData) {
+        const updatedData: RosterResponse = {
+          ...currentData,
+          roster: {
+            ...currentData.roster,
+            groups: currentData.roster.groups.map((g) =>
+              g.groupNumber === input.groupNumber && input.rosterIndex === 1
+                ? {
+                    ...g,
+                    slots: g.slots.map((s) =>
+                      s.position === input.slotPosition
+                        ? {
+                            ...s,
+                            playerName: input.playerName,
+                            role: input.role ?? s.role,
+                          }
+                        : s,
+                    ),
+                  }
+                : g,
+            ),
+            secondGroups: currentData.roster.secondGroups.map((g) =>
+              g.groupNumber === input.groupNumber && input.rosterIndex === 2
+                ? {
+                    ...g,
+                    slots: g.slots.map((s) =>
+                      s.position === input.slotPosition
+                        ? {
+                            ...s,
+                            playerName: input.playerName,
+                            role: input.role ?? s.role,
+                          }
+                        : s,
+                    ),
+                  }
+                : g,
+            ),
+          },
+        };
+        queryClient.setQueryData(["roster"], updatedData);
+      }
+
+      // Send to server with lightweight endpoint
+      await updateSlot({
         rosterIndex: input.rosterIndex,
-        groupNumber: targetGroup.groupNumber,
-        name: targetGroup.name,
-        slots: targetGroup.slots.map((slot) => ({
-          position: slot.position,
-          playerName:
-            slot.position === input.slotPosition
-              ? input.playerName
-              : slot.playerName,
-          role:
-            slot.position === input.slotPosition
-              ? (input.role ?? slot.role)
-              : slot.role,
-        })),
+        groupNumber: input.groupNumber,
+        slotPosition: input.slotPosition,
+        playerName: input.playerName,
+        role: input.role ?? null,
       });
 
+      // Refetch to verify
+      const updated = await fetchRoster();
+      queryClient.setQueryData(["roster"], updated);
       handleGroupSaved(updated);
+
       toast.success(
         `Player assigned to roster ${input.rosterIndex}, group ${input.groupNumber}.`,
       );
     } catch (error) {
+      // Refetch to restore correct state
+      queryClient.invalidateQueries({ queryKey: ["roster"] });
       toast.error(error instanceof Error ? error.message : "Unknown error.");
     } finally {
       setPendingDropTarget(null);
@@ -1420,6 +1594,7 @@ export function RosterCard() {
               onSaved={handleGroupSaved}
               onDropParticipant={handleParticipantDrop}
               pendingDropTarget={pendingDropTarget}
+              queryClient={queryClient}
             />
           ))}
         </div>
@@ -1436,6 +1611,7 @@ export function RosterCard() {
               onSaved={handleGroupSaved}
               onDropParticipant={handleParticipantDrop}
               pendingDropTarget={pendingDropTarget}
+              queryClient={queryClient}
             />
           ))}
         </div>
@@ -1457,6 +1633,7 @@ export function RosterCard() {
                   onSaved={handleGroupSaved}
                   onDropParticipant={handleParticipantDrop}
                   pendingDropTarget={pendingDropTarget}
+                  queryClient={queryClient}
                 />
               ))}
             </div>
@@ -1472,6 +1649,7 @@ export function RosterCard() {
                   onSaved={handleGroupSaved}
                   onDropParticipant={handleParticipantDrop}
                   pendingDropTarget={pendingDropTarget}
+                  queryClient={queryClient}
                 />
               ))}
             </div>

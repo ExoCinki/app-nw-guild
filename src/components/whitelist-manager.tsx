@@ -79,6 +79,9 @@ export function WhitelistManager() {
     queryKey: ["whitelist"],
     queryFn: getWhitelist,
     retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const addWhitelistMutation = useMutation({

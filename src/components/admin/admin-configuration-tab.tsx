@@ -154,6 +154,9 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     queryKey: ["admin-global-guild-roles", resolvedConfigGuildId],
     queryFn: () => fetchAdminGuildRoles(resolvedConfigGuildId),
     enabled: Boolean(resolvedConfigGuildId),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   useEffect(() => {

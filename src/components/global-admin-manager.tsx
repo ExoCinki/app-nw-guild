@@ -45,6 +45,9 @@ export function GlobalAdminManager({ isOwner }: { isOwner: boolean }) {
   const query = useQuery({
     queryKey: ["admin-global"],
     queryFn: fetchAdminGlobalData,
+    staleTime: 2 * 60 * 1000, // 2 minutes - admin data is less sensitive
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   if (query.isLoading) {

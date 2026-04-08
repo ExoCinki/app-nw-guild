@@ -36,9 +36,12 @@ export function Navbar() {
   const pathname = usePathname();
 
   const selectedGuildQuery = useQuery({
-    queryKey: ["selected-guild", "navbar"],
+    queryKey: ["selected-guild"],
     queryFn: getSelectedGuild,
     enabled: status === "authenticated",
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const isOwner = Boolean(session?.user?.isOwner);

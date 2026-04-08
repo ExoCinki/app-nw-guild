@@ -32,12 +32,16 @@ export async function GET() {
     });
 
     if (!selected?.discordGuildId) {
-        return NextResponse.json({
+        const response = NextResponse.json({
             selectedGuildId: null,
             selectedGuild: null,
         });
+        // Cache negative responses for 5 minutes
+        response.headers.set("Cache-Control", "private, max-age=300");
+        return response;
     }
 
+    // Fast path: return cached data immediately (no Discord call needed)
     const fallbackWhitelistedGuild = await prisma.whitelistedGuild.findUnique({
         where: { discordGuildId: selected.discordGuildId },
         select: {
@@ -46,44 +50,7 @@ export async function GET() {
         },
     });
 
-    try {
-        const manageableGuildsResult = await getManagedWhitelistedGuilds(session.user.email);
-
-        if (manageableGuildsResult.ok) {
-            const selectedGuild = manageableGuildsResult.guilds.find(
-                (guild) => guild.id === selected.discordGuildId,
-            );
-
-            if (selectedGuild) {
-                if (
-                    selectedGuild.name !== selected.discordGuildName ||
-                    selectedGuild.iconUrl !== selected.discordGuildIconUrl
-                ) {
-                    await prisma.selectedGuild.update({
-                        where: { userId: user.id },
-                        data: {
-                            discordGuildName: selectedGuild.name,
-                            discordGuildIconUrl: selectedGuild.iconUrl,
-                        },
-                    });
-                }
-
-                return NextResponse.json({
-                    selectedGuildId: selectedGuild.id,
-                    selectedGuild: {
-                        id: selectedGuild.id,
-                        name: selectedGuild.name,
-                        iconUrl: selectedGuild.iconUrl,
-                    },
-                });
-            }
-        }
-    } catch {
-        // Discord can intermittently fail; keep navbar stable by using persisted selection fallback.
-        console.warn("selected-guild GET fallback used (Discord unavailable)");
-    }
-
-    return NextResponse.json({
+    const responseData = {
         selectedGuildId: selected.discordGuildId,
         selectedGuild: {
             id: selected.discordGuildId,
@@ -93,7 +60,45 @@ export async function GET() {
                 null,
             iconUrl: selected.discordGuildIconUrl ?? null,
         },
-    });
+    };
+
+    const response = NextResponse.json(responseData);
+    // Cache the response for 5 minutes
+    response.headers.set("Cache-Control", "private, max-age=300");
+
+    // Async update Discord data in background (non-blocking)
+    // This ensures the user gets a fast response while data is kept fresh
+    getManagedWhitelistedGuilds(session.user.email)
+        .then((manageableGuildsResult) => {
+            if (manageableGuildsResult.ok) {
+                const selectedGuild = manageableGuildsResult.guilds.find(
+                    (guild) => guild.id === selected.discordGuildId,
+                );
+
+                if (selectedGuild) {
+                    if (
+                        selectedGuild.name !== selected.discordGuildName ||
+                        selectedGuild.iconUrl !== selected.discordGuildIconUrl
+                    ) {
+                        // Fire and forget - don't await
+                        prisma.selectedGuild.update({
+                            where: { userId: user.id },
+                            data: {
+                                discordGuildName: selectedGuild.name,
+                                discordGuildIconUrl: selectedGuild.iconUrl,
+                            },
+                        }).catch((err) => {
+                            console.warn("Failed to update selected guild data:", err);
+                        });
+                    }
+                }
+            }
+        })
+        .catch((err) => {
+            console.warn("Failed to refresh selected guild from Discord:", err);
+        });
+
+    return response;
 }
 
 export async function POST(request: Request) {
