@@ -354,11 +354,15 @@ export function ServerConfigurationCard() {
       <div className="mt-6 space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="apiKey"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               API key
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="apiKey"
                 value={editingField === "apiKey" ? apiKey : maskApiKey(apiKey)}
                 onChange={(event) => setApiKey(event.target.value)}
                 placeholder="ex: sk_live_xxx"
@@ -383,11 +387,15 @@ export function ServerConfigurationCard() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="channelId"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Discord Channel ID
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="channelId"
                 value={channelId}
                 onChange={(event) => setChannelId(event.target.value)}
                 placeholder="ex: 123456789012345678"
@@ -412,11 +420,15 @@ export function ServerConfigurationCard() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="zooMemberRoleId"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Member role
             </label>
             <div className="flex items-center gap-2">
               <select
+                id="zooMemberRoleId"
                 value={zooMemberRoleId}
                 onChange={(event) => setZooMemberRoleId(event.target.value)}
                 disabled={
@@ -458,11 +470,15 @@ export function ServerConfigurationCard() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="warsCount"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Point per War
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="warsCount"
                 type="number"
                 min={0}
                 step={1}
@@ -489,11 +505,15 @@ export function ServerConfigurationCard() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="racesCount"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Point per Races
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="racesCount"
                 type="number"
                 min={0}
                 step={1}
@@ -520,11 +540,15 @@ export function ServerConfigurationCard() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="invasionsCount"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Point per Invasion
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="invasionsCount"
                 type="number"
                 min={0}
                 step={1}
@@ -552,11 +576,15 @@ export function ServerConfigurationCard() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="vodsCount"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Point per Vods
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="vodsCount"
                 type="number"
                 min={0}
                 step={1}
@@ -583,11 +611,15 @@ export function ServerConfigurationCard() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="reviewsCount"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Point per Reviews
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="reviewsCount"
                 type="number"
                 min={0}
                 step={1}
@@ -614,11 +646,15 @@ export function ServerConfigurationCard() {
             </div>
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-300">
+            <label
+              htmlFor="bonusCount"
+              className="mb-2 block text-sm font-medium text-slate-300"
+            >
               Point per Bonus
             </label>
             <div className="flex items-center gap-2">
               <input
+                id="bonusCount"
                 type="number"
                 min={0}
                 step={1}
