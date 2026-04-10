@@ -114,12 +114,6 @@ export function Navbar() {
             >
               Home
             </Link>
-            <Link
-              href="/scoreboard/public"
-              className={`text-sm font-medium transition ${isActive("/scoreboard/public")}`}
-            >
-              Scoreboard Public
-            </Link>
             {session?.user && canAccessRoster ? (
               <Link
                 href="/roster"

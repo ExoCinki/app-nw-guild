@@ -16,6 +16,7 @@ type SharedPayoutEntry = {
   bonus: number;
   invasions: number;
   vods: number;
+  isPaid: boolean;
   points: number;
   goldEarned: number;
 };
@@ -90,6 +91,7 @@ type SortKey =
   | "bonus"
   | "invasions"
   | "vods"
+  | "isPaid"
   | "points"
   | "goldEarned";
 type SortDir = "asc" | "desc";
@@ -147,6 +149,9 @@ export default function SharedPayoutClient({ token }: { token: string }) {
       if (sortKey === "name") {
         valA = (a.displayName || a.username).toLowerCase();
         valB = (b.displayName || b.username).toLowerCase();
+      } else if (sortKey === "isPaid") {
+        valA = a.isPaid ? 1 : 0;
+        valB = b.isPaid ? 1 : 0;
       } else {
         valA = a[sortKey];
         valB = b[sortKey];
@@ -335,6 +340,7 @@ export default function SharedPayoutClient({ token }: { token: string }) {
                     { key: "bonus", label: "Bonus", align: "center" },
                     { key: "invasions", label: "Invasions", align: "center" },
                     { key: "vods", label: "Management", align: "center" },
+                    { key: "isPaid", label: "Paid", align: "center" },
                     { key: "points", label: "Points", align: "center" },
                     { key: "goldEarned", label: "Gain", align: "center" },
                   ] as {
@@ -358,7 +364,7 @@ export default function SharedPayoutClient({ token }: { token: string }) {
               {filteredEntries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-3 py-8 text-center text-sm text-slate-400"
                   >
                     No player matches your search.
@@ -384,6 +390,17 @@ export default function SharedPayoutClient({ token }: { token: string }) {
                     <td className="px-3 py-3 text-center">{entry.bonus}</td>
                     <td className="px-3 py-3 text-center">{entry.invasions}</td>
                     <td className="px-3 py-3 text-center">{entry.vods}</td>
+                    <td className="px-3 py-3 text-center">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                          entry.isPaid
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : "bg-rose-500/20 text-rose-300"
+                        }`}
+                      >
+                        {entry.isPaid ? "Paid" : "Unpaid"}
+                      </span>
+                    </td>
                     <td className="px-3 py-3 text-center font-semibold text-blue-300">
                       {entry.points}
                     </td>

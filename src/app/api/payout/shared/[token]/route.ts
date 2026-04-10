@@ -105,6 +105,7 @@ export async function GET(
                 bonus: entry.bonus,
                 invasions: entry.invasions,
                 vods: entry.vods,
+                isPaid: entry.isPaid,
                 points,
             };
         });
