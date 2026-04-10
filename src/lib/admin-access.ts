@@ -156,7 +156,7 @@ export async function hasGuildScopeAccess(params: {
     });
 
     if (!access) {
-        return true;
+        return false;
     }
 
     if (params.scope === "roster") {

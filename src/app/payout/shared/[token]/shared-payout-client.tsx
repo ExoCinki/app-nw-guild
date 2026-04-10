@@ -257,7 +257,7 @@ export default function SharedPayoutClient({ token }: { token: string }) {
               Total configured balance
             </p>
             <p className="mt-2 text-3xl font-bold text-amber-200">
-              {data.session.totalConfiguredBalance.toFixed(0)} or
+              {data.session.totalConfiguredBalance.toFixed(0)}
             </p>
           </article>
           <article className="rounded-xl border border-blue-700/40 bg-blue-900/20 p-4">
@@ -327,7 +327,7 @@ export default function SharedPayoutClient({ token }: { token: string }) {
                       {entry.points}
                     </td>
                     <td className="px-3 py-3 text-center font-semibold text-amber-300">
-                      {entry.goldEarned.toFixed(0)} or
+                      {entry.goldEarned.toFixed(0)}
                     </td>
                   </tr>
                 ))
