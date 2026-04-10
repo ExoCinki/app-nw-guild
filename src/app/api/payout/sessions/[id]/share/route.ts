@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 const SHARE_LINK_TTL_DAYS = 30;
 
 function createShareToken(): string {
-    return randomBytes(32).toString("base64url");
+    // Use lowercase hex so copied URLs remain stable across tools that may alter case.
+    return randomBytes(32).toString("hex");
 }
 
 function hashShareToken(token: string): string {

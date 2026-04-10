@@ -115,9 +115,17 @@ export async function GET(
             );
         }
 
-        const share = await prisma.payoutSessionShare.findUnique({
+        const tokenHash = hashShareToken(token);
+        const normalizedTokenHash = hashShareToken(token.toLowerCase());
+
+        const share = await prisma.payoutSessionShare.findFirst({
             where: {
-                shareTokenHash: hashShareToken(token),
+                shareTokenHash: {
+                    in:
+                        tokenHash === normalizedTokenHash
+                            ? [tokenHash]
+                            : [tokenHash, normalizedTokenHash],
+                },
             },
             include: {
                 session: {
@@ -131,7 +139,13 @@ export async function GET(
         });
 
         if (!share) {
-            return NextResponse.json({ error: "Shared session not found" }, { status: 404 });
+            return NextResponse.json(
+                {
+                    error:
+                        "Shared session not found. The link may have been regenerated or is invalid.",
+                },
+                { status: 404 },
+            );
         }
 
         const expiresAt = new Date(
