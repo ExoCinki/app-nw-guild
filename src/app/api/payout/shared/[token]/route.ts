@@ -13,11 +13,19 @@ type DiscordGuildMemberResponse = {
     roles?: string[];
 };
 
+type MembershipDebug = {
+    source: "user-token" | "bot-token";
+    status: "matched" | "missing-role" | "member-not-found" | "request-failed" | "unavailable";
+    httpStatus?: number;
+    roles: string[];
+};
+
 type RoleMatchResult = {
     ok: true;
     hasRole: boolean;
     source: "user-token" | "bot-token";
     roles: string[];
+    debug: MembershipDebug;
 };
 
 async function refreshDiscordAccessToken(
@@ -123,7 +131,18 @@ async function fetchCurrentUserGuildRoleMatch(params: {
     }
 
     if (response.status === 404) {
-        return { ok: true, hasRole: false, source: "user-token", roles: [] };
+        return {
+            ok: true,
+            hasRole: false,
+            source: "user-token",
+            roles: [],
+            debug: {
+                source: "user-token",
+                status: "member-not-found",
+                httpStatus: 404,
+                roles: [],
+            },
+        };
     }
 
     if (!response.ok) {
@@ -137,6 +156,14 @@ async function fetchCurrentUserGuildRoleMatch(params: {
         hasRole: Boolean(member.roles?.includes(params.requiredRoleId)),
         source: "user-token",
         roles: member.roles ?? [],
+        debug: {
+            source: "user-token",
+            status: (member.roles ?? []).includes(params.requiredRoleId)
+                ? "matched"
+                : "missing-role",
+            httpStatus: response.status,
+            roles: member.roles ?? [],
+        },
     };
 }
 
@@ -184,7 +211,18 @@ async function fetchGuildMemberRoleMatch(params: {
         );
 
         if (response.status === 404) {
-            return { ok: true, hasRole: false, source: "bot-token", roles: [] };
+            return {
+                ok: true,
+                hasRole: false,
+                source: "bot-token",
+                roles: [],
+                debug: {
+                    source: "bot-token",
+                    status: "member-not-found",
+                    httpStatus: 404,
+                    roles: [],
+                },
+            };
         }
 
         if (!response.ok) {
@@ -200,6 +238,14 @@ async function fetchGuildMemberRoleMatch(params: {
             hasRole: Boolean(member.roles?.includes(params.requiredRoleId)),
             source: "bot-token",
             roles: member.roles ?? [],
+            debug: {
+                source: "bot-token",
+                status: (member.roles ?? []).includes(params.requiredRoleId)
+                    ? "matched"
+                    : "missing-role",
+                httpStatus: response.status,
+                roles: member.roles ?? [],
+            },
         };
     }
 
@@ -378,6 +424,7 @@ export async function GET(
                     error:
                         "You do not have the required role for this shared session. If you recently changed permissions, sign out and sign back in with Discord.",
                     debug: {
+                        linkedDiscordUserId: user.discordId,
                         requiredRole: {
                             id: guildConfiguration.zooMemberRoleId,
                             name:
@@ -386,6 +433,14 @@ export async function GET(
                                 null,
                         },
                         verificationSource: membership.source,
+                        checks: {
+                            userToken: userMembership?.debug ?? {
+                                source: "user-token",
+                                status: "unavailable",
+                                roles: [],
+                            },
+                            finalCheck: membership.debug,
+                        },
                         detectedRoles: membership.roles.map((roleId) => ({
                             id: roleId,
                             name: roleNameById.get(roleId) ?? null,

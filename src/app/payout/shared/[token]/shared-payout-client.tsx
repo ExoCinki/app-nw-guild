@@ -40,11 +40,26 @@ type SharedPayoutResponse = {
 type SharedPayoutError = Error & {
   status?: number;
   debug?: {
+    linkedDiscordUserId?: string;
     requiredRole?: {
       id: string;
       name: string | null;
     };
     verificationSource?: string;
+    checks?: {
+      userToken?: {
+        source: string;
+        status: string;
+        httpStatus?: number;
+        roles: string[];
+      };
+      finalCheck?: {
+        source: string;
+        status: string;
+        httpStatus?: number;
+        roles: string[];
+      };
+    };
     detectedRoles?: Array<{
       id: string;
       name: string | null;
@@ -114,8 +129,26 @@ export default function SharedPayoutClient({ token }: { token: string }) {
                 {debug.requiredRole?.id || "n/a"})
               </p>
               <p className="mt-2">
+                Linked Discord user ID: {debug.linkedDiscordUserId || "unknown"}
+              </p>
+              <p className="mt-2">
                 Verification source: {debug.verificationSource || "unknown"}
               </p>
+              <div className="mt-2 text-slate-300">
+                <p>
+                  User-token check:{" "}
+                  {debug.checks?.userToken?.status || "unknown"}
+                  {debug.checks?.userToken?.httpStatus
+                    ? ` (HTTP ${debug.checks.userToken.httpStatus})`
+                    : ""}
+                </p>
+                <p>
+                  Final check: {debug.checks?.finalCheck?.status || "unknown"}
+                  {debug.checks?.finalCheck?.httpStatus
+                    ? ` (HTTP ${debug.checks.finalCheck.httpStatus})`
+                    : ""}
+                </p>
+              </div>
               <div className="mt-2">
                 <p>Detected roles:</p>
                 {debug.detectedRoles && debug.detectedRoles.length > 0 ? (
