@@ -107,7 +107,7 @@ export async function PATCH(
 
         if (payload.isLocked === false && targetSession.isLocked && targetSession.lockedByUserId !== dbUser.id) {
             return NextResponse.json(
-                { error: "Seul l'utilisateur qui a verrouillé cette session peut la déverrouiller" },
+                { error: "Only the user who locked this session can unlock it" },
                 { status: 403 },
             );
         }
@@ -177,7 +177,7 @@ export async function DELETE(
 
         if (targetSession.isLocked) {
             return NextResponse.json(
-                { error: "Cette session est verrouillée et ne peut pas être supprimée" },
+                { error: "This session is locked and cannot be deleted" },
                 { status: 403 },
             );
         }

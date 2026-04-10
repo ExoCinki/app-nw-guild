@@ -14,6 +14,9 @@ import {
   faLock,
   faLockOpen,
   faPencil,
+  faShareNodes,
+  faCopy,
+  faLinkSlash,
 } from "@fortawesome/free-solid-svg-icons";
 import { LoadingButton } from "@/components/loading-button";
 import { LoadingIndicator } from "@/components/loading-indicator";
@@ -74,6 +77,13 @@ export default function PayoutClient() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [playerSearchQuery, setPlayerSearchQuery] = useState<string>("");
   const [currentPlayersPage, setCurrentPlayersPage] = useState<number>(1);
+  const [sharedLinkBySession, setSharedLinkBySession] = useState<
+    Record<string, string>
+  >({});
+  const [shareExpiresAtBySession, setShareExpiresAtBySession] = useState<
+    Record<string, string>
+  >({});
+  const [currentTimeMs, setCurrentTimeMs] = useState<number>(0);
 
   // Local state for counter inputs with debounce
   const [counterEdits, setCounterEdits] = useState<
@@ -288,9 +298,7 @@ export default function PayoutClient() {
       queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
         old.map((s) => (s.id === updated.id ? updated : s)),
       );
-      toast.success(
-        updated.isLocked ? "Session verrouillée" : "Session déverrouillée",
-      );
+      toast.success(updated.isLocked ? "Session locked" : "Session unlocked");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -317,9 +325,77 @@ export default function PayoutClient() {
         old.map((s) => (s.id === updated.id ? updated : s)),
       );
       setRenamingSessionId(null);
-      toast.success("Session renommée");
+      toast.success("Session renamed");
     },
-    onError: () => toast.error("Erreur lors du renommage"),
+    onError: () => toast.error("Error while renaming session"),
+  });
+
+  const createShareLinkMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/payout/sessions/${sessionId}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Failed to create share link");
+      }
+
+      const payload = (await res.json()) as {
+        shareUrl: string;
+        expiresAt: string;
+      };
+      return { ...payload, sessionId };
+    },
+    onSuccess: (data) => {
+      setSharedLinkBySession((previous) => ({
+        ...previous,
+        [data.sessionId]: data.shareUrl,
+      }));
+      setShareExpiresAtBySession((previous) => ({
+        ...previous,
+        [data.sessionId]: data.expiresAt,
+      }));
+      setCurrentTimeMs(Date.now());
+      toast.success("Shared link generated");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const revokeShareLinkMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/payout/sessions/${sessionId}/share`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(payload?.error ?? "Failed to revoke share link");
+      }
+    },
+    onSuccess: (_, sessionId) => {
+      setSharedLinkBySession((previous) => {
+        const next = { ...previous };
+        delete next[sessionId];
+        return next;
+      });
+      setShareExpiresAtBySession((previous) => {
+        const next = { ...previous };
+        delete next[sessionId];
+        return next;
+      });
+      setCurrentTimeMs(Date.now());
+      toast.success("Shared link revoked");
+    },
+    onError: (error: Error) => toast.error(error.message),
   });
 
   // Add entry
@@ -404,7 +480,7 @@ export default function PayoutClient() {
     },
   });
 
-  // Toggle paid — mutation séparée pour que son isPending n'affecte pas les counters
+  // Toggle paid uses a dedicated mutation so counter pending state stays independent
   const togglePaidMutation = useMutation({
     mutationFn: async (data: { entryId: string; isPaid: boolean }) => {
       const res = await fetch("/api/payout/entries", {
@@ -643,6 +719,26 @@ export default function PayoutClient() {
     );
   }
 
+  const selectedSharedLink = selectedSessionId
+    ? sharedLinkBySession[selectedSessionId] || ""
+    : "";
+  const selectedShareExpiresAt = selectedSessionId
+    ? shareExpiresAtBySession[selectedSessionId] || ""
+    : "";
+
+  const getShareLinkStatus = (sessionId: string) => {
+    const expiresAt = shareExpiresAtBySession[sessionId];
+    if (!expiresAt) {
+      return { hasLink: false, expired: false };
+    }
+
+    return {
+      hasLink: true,
+      expired:
+        currentTimeMs > 0 && new Date(expiresAt).getTime() <= currentTimeMs,
+    };
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <h1 className="text-3xl font-bold mb-6">Payout Distribution</h1>
@@ -667,144 +763,156 @@ export default function PayoutClient() {
 
             {/* Sessions List */}
             <div className="space-y-2">
-              {sessions.map((session) => (
-                <div key={session.id} className="flex gap-2 items-stretch">
-                  {renamingSessionId === session.id ? (
-                    /* Inline rename editor */
-                    <div className="flex flex-1 gap-1 px-3 py-2 bg-slate-800 border border-blue-500 rounded items-center">
-                      <input
-                        autoFocus
-                        value={renameInput}
-                        onChange={(e) => setRenameInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter")
+              {sessions.map((session) => {
+                const shareStatus = getShareLinkStatus(session.id);
+
+                return (
+                  <div key={session.id} className="flex gap-2 items-stretch">
+                    {renamingSessionId === session.id ? (
+                      /* Inline rename editor */
+                      <div className="flex flex-1 gap-1 px-3 py-2 bg-slate-800 border border-blue-500 rounded items-center">
+                        <input
+                          autoFocus
+                          value={renameInput}
+                          onChange={(e) => setRenameInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              renameSessionMutation.mutate({
+                                sessionId: session.id,
+                                name: renameInput,
+                              });
+                            if (e.key === "Escape") setRenamingSessionId(null);
+                          }}
+                          className="flex-1 bg-transparent text-slate-100 text-sm outline-none placeholder-slate-500"
+                          placeholder="Nom de la session..."
+                        />
+                        <LoadingButton
+                          onClick={() =>
                             renameSessionMutation.mutate({
                               sessionId: session.id,
                               name: renameInput,
-                            });
-                          if (e.key === "Escape") setRenamingSessionId(null);
-                        }}
-                        className="flex-1 bg-transparent text-slate-100 text-sm outline-none placeholder-slate-500"
-                        placeholder="Nom de la session..."
-                      />
-                      <LoadingButton
-                        onClick={() =>
-                          renameSessionMutation.mutate({
-                            sessionId: session.id,
-                            name: renameInput,
-                          })
-                        }
-                        isLoading={renameSessionMutation.isPending}
-                        className="px-2 py-1 rounded text-green-400 hover:bg-slate-700"
-                        title="Confirmer"
-                      >
-                        <FontAwesomeIcon icon={faCheck} />
-                      </LoadingButton>
-                      <button
-                        type="button"
-                        onClick={() => setRenamingSessionId(null)}
-                        className="px-2 py-1 rounded text-slate-400 hover:bg-slate-700"
-                        title="Annuler"
-                      >
-                        <FontAwesomeIcon icon={faXmark} />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Session card button */}
-                      <button
-                        onClick={() => setSelectedSessionId(session.id)}
-                        className={`flex-1 text-left px-4 py-3 rounded border transition-colors ${
-                          selectedSessionId === session.id
-                            ? "bg-blue-700 border-blue-500"
-                            : "bg-slate-800 border-slate-700 hover:bg-slate-700"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 text-sm font-mono flex-wrap">
-                          <span>
-                            {new Date(session.createdAt).toLocaleDateString(
-                              "fr-FR",
-                            )}
-                          </span>
-                          {session.name && (
-                            <span className="font-sans font-semibold text-slate-200 truncate max-w-[120px]">
-                              {session.name}
-                            </span>
-                          )}
-                          {session.isLocked && (
-                            <FontAwesomeIcon
-                              icon={faLock}
-                              className="text-yellow-400 text-xs"
-                            />
-                          )}
-                        </div>
-                        <div className="text-lg font-semibold">
-                          {session.goldPool.toFixed(0)} or
-                        </div>
-                        <div className="text-xs text-slate-400">
-                          {session.entries.length} players
-                        </div>
-                      </button>
-
-                      {/* Lock / unlock button — toujours visible */}
-                      <LoadingButton
-                        onClick={() =>
-                          toggleLockMutation.mutate({
-                            sessionId: session.id,
-                            isLocked: !session.isLocked,
-                          })
-                        }
-                        isLoading={toggleLockMutation.isPending}
-                        disabled={
-                          session.isLocked &&
-                          session.lockedByUserId !== currentUser?.id
-                        }
-                        className={`px-3 rounded ${
-                          session.isLocked
-                            ? "bg-yellow-700 hover:bg-yellow-600 text-yellow-100"
-                            : "bg-slate-700 hover:bg-slate-600 text-slate-300"
-                        }`}
-                        title={
-                          session.isLocked ? "Déverrouiller" : "Verrouiller"
-                        }
-                      >
-                        <FontAwesomeIcon
-                          icon={session.isLocked ? faLock : faLockOpen}
-                        />
-                      </LoadingButton>
-
-                      {/* Rename — visible quand la session est sélectionnée */}
-                      {selectedSessionId === session.id && (
+                            })
+                          }
+                          isLoading={renameSessionMutation.isPending}
+                          className="px-2 py-1 rounded text-green-400 hover:bg-slate-700"
+                          title="Confirmer"
+                        >
+                          <FontAwesomeIcon icon={faCheck} />
+                        </LoadingButton>
                         <button
                           type="button"
-                          onClick={() => {
-                            setRenameInput(session.name ?? "");
-                            setRenamingSessionId(session.id);
-                          }}
-                          className="px-3 rounded bg-slate-700 hover:bg-slate-600 text-slate-300"
-                          title="Renommer la session"
+                          onClick={() => setRenamingSessionId(null)}
+                          className="px-2 py-1 rounded text-slate-400 hover:bg-slate-700"
+                          title="Annuler"
                         >
-                          <FontAwesomeIcon icon={faPencil} />
+                          <FontAwesomeIcon icon={faXmark} />
                         </button>
-                      )}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Session card button */}
+                        <button
+                          onClick={() => setSelectedSessionId(session.id)}
+                          className={`flex-1 text-left px-4 py-3 rounded border transition-colors ${
+                            selectedSessionId === session.id
+                              ? "bg-blue-700 border-blue-500"
+                              : "bg-slate-800 border-slate-700 hover:bg-slate-700"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 text-sm font-mono flex-wrap">
+                            <span>
+                              {new Date(session.createdAt).toLocaleDateString(
+                                "en-US",
+                              )}
+                            </span>
+                            {session.name && (
+                              <span className="font-sans font-semibold text-slate-200 truncate max-w-[120px]">
+                                {session.name}
+                              </span>
+                            )}
+                            {session.isLocked && (
+                              <FontAwesomeIcon
+                                icon={faLock}
+                                className="text-yellow-400 text-xs"
+                              />
+                            )}
+                            {shareStatus.hasLink &&
+                              (shareStatus.expired ? (
+                                <span className="rounded border border-red-500/60 bg-red-900/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-300">
+                                  Expired
+                                </span>
+                              ) : (
+                                <span className="rounded border border-emerald-500/60 bg-emerald-900/30 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                                  Active
+                                </span>
+                              ))}
+                          </div>
+                          <div className="text-lg font-semibold">
+                            {session.goldPool.toFixed(0)} or
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {session.entries.length} players
+                          </div>
+                        </button>
 
-                      {/* Delete — visible uniquement si sélectionnée ET non verrouillée */}
-                      {selectedSessionId === session.id &&
-                        !session.isLocked && (
-                          <LoadingButton
-                            onClick={() => setDeleteSessionModalOpen(true)}
-                            isLoading={deleteSessionMutation.isPending}
-                            className="px-3 rounded bg-red-700 hover:bg-red-800 flex items-center"
-                            title="Supprimer la session"
-                            aria-label="Supprimer la session"
+                        {/* Lock / unlock button — toujours visible */}
+                        <LoadingButton
+                          onClick={() =>
+                            toggleLockMutation.mutate({
+                              sessionId: session.id,
+                              isLocked: !session.isLocked,
+                            })
+                          }
+                          isLoading={toggleLockMutation.isPending}
+                          disabled={
+                            session.isLocked &&
+                            session.lockedByUserId !== currentUser?.id
+                          }
+                          className={`px-3 rounded ${
+                            session.isLocked
+                              ? "bg-yellow-700 hover:bg-yellow-600 text-yellow-100"
+                              : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+                          }`}
+                          title={session.isLocked ? "Unlock" : "Lock"}
+                        >
+                          <FontAwesomeIcon
+                            icon={session.isLocked ? faLock : faLockOpen}
+                          />
+                        </LoadingButton>
+
+                        {/* Rename button visible for selected session */}
+                        {selectedSessionId === session.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRenameInput(session.name ?? "");
+                              setRenamingSessionId(session.id);
+                            }}
+                            className="px-3 rounded bg-slate-700 hover:bg-slate-600 text-slate-300"
+                            title="Rename session"
                           >
-                            <FontAwesomeIcon icon={faTrash} />
-                          </LoadingButton>
+                            <FontAwesomeIcon icon={faPencil} />
+                          </button>
                         )}
-                    </>
-                  )}
-                </div>
-              ))}
+
+                        {/* Delete button visible only if selected and unlocked */}
+                        {selectedSessionId === session.id &&
+                          !session.isLocked && (
+                            <LoadingButton
+                              onClick={() => setDeleteSessionModalOpen(true)}
+                              isLoading={deleteSessionMutation.isPending}
+                              className="px-3 rounded bg-red-700 hover:bg-red-800 flex items-center"
+                              title="Delete session"
+                              aria-label="Delete session"
+                            >
+                              <FontAwesomeIcon icon={faTrash} />
+                            </LoadingButton>
+                          )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -846,6 +954,67 @@ export default function PayoutClient() {
                   <FontAwesomeIcon icon={faCheck} />
                 </LoadingButton>
               </div>
+
+              <label className="block text-sm mb-2">Shared session link:</label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <LoadingButton
+                  type="button"
+                  onClick={() => {
+                    if (!selectedSessionId) return;
+                    createShareLinkMutation.mutate(selectedSessionId);
+                  }}
+                  isLoading={createShareLinkMutation.isPending}
+                  className="px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-700"
+                >
+                  <FontAwesomeIcon icon={faShareNodes} /> Create link
+                </LoadingButton>
+
+                <div className="flex flex-1 gap-2">
+                  <input
+                    type="text"
+                    value={selectedSharedLink}
+                    readOnly
+                    placeholder="Generate a link to share this session"
+                    className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded text-slate-200"
+                  />
+                  <button
+                    type="button"
+                    disabled={!selectedSharedLink}
+                    onClick={() => {
+                      if (!selectedSharedLink) return;
+                      void navigator.clipboard.writeText(selectedSharedLink);
+                      toast.success("Link copied");
+                    }}
+                    className="px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Copy link"
+                  >
+                    <FontAwesomeIcon icon={faCopy} />
+                  </button>
+                  <LoadingButton
+                    type="button"
+                    disabled={!selectedSessionId}
+                    onClick={() => {
+                      if (!selectedSessionId) return;
+                      revokeShareLinkMutation.mutate(selectedSessionId);
+                    }}
+                    isLoading={revokeShareLinkMutation.isPending}
+                    className="px-3 py-2 rounded bg-red-700 hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Revoke link"
+                  >
+                    <FontAwesomeIcon icon={faLinkSlash} />
+                  </LoadingButton>
+                </div>
+              </div>
+              {selectedShareExpiresAt ? (
+                <p className="mt-2 text-xs text-slate-400">
+                  This link expires on{" "}
+                  {new Date(selectedShareExpiresAt).toLocaleDateString("en-US")}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">
+                  Links expire after 30 days.
+                </p>
+              )}
             </div>
 
             {/* Add Players */}
