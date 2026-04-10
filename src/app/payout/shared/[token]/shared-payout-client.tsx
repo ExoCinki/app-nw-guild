@@ -82,8 +82,40 @@ type SharedPayoutError = Error & {
   };
 };
 
+type SortKey =
+  | "name"
+  | "wars"
+  | "races"
+  | "reviews"
+  | "bonus"
+  | "invasions"
+  | "vods"
+  | "points"
+  | "goldEarned";
+type SortDir = "asc" | "desc";
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) {
+    return <span className="ml-1 text-slate-600">↕</span>;
+  }
+  return (
+    <span className="ml-1 text-slate-300">{dir === "asc" ? "↑" : "↓"}</span>
+  );
+}
+
 export default function SharedPayoutClient({ token }: { token: string }) {
   const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("goldEarned");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
 
   const sharedPayoutQuery = useQuery({
     queryKey: ["shared-payout", token],
@@ -101,16 +133,30 @@ export default function SharedPayoutClient({ token }: { token: string }) {
       (entry) => entry.goldEarned > 0,
     );
 
-    if (!search.trim()) {
-      return entries;
-    }
+    const searched = search.trim()
+      ? entries.filter((entry) => {
+          const name = (entry.displayName || entry.username).toLowerCase();
+          return name.includes(search.toLowerCase());
+        })
+      : entries;
 
-    const lower = search.toLowerCase();
-    return entries.filter((entry) => {
-      const name = (entry.displayName || entry.username).toLowerCase();
-      return name.includes(lower);
+    return [...searched].sort((a, b) => {
+      let valA: number | string;
+      let valB: number | string;
+
+      if (sortKey === "name") {
+        valA = (a.displayName || a.username).toLowerCase();
+        valB = (b.displayName || b.username).toLowerCase();
+      } else {
+        valA = a[sortKey];
+        valB = b[sortKey];
+      }
+
+      if (valA < valB) return sortDir === "asc" ? -1 : 1;
+      if (valA > valB) return sortDir === "asc" ? 1 : -1;
+      return 0;
     });
-  }, [sharedPayoutQuery.data?.entries, search]);
+  }, [sharedPayoutQuery.data?.entries, search, sortKey, sortDir]);
 
   if (sharedPayoutQuery.isLoading) {
     return (
@@ -284,15 +330,32 @@ export default function SharedPayoutClient({ token }: { token: string }) {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-slate-700 text-slate-300">
-                <th className="px-3 py-3 text-left">Player</th>
-                <th className="px-3 py-3 text-center">Wars</th>
-                <th className="px-3 py-3 text-center">Races</th>
-                <th className="px-3 py-3 text-center">Reviews</th>
-                <th className="px-3 py-3 text-center">Bonus</th>
-                <th className="px-3 py-3 text-center">Invasions</th>
-                <th className="px-3 py-3 text-center">Management</th>
-                <th className="px-3 py-3 text-center">Points</th>
-                <th className="px-3 py-3 text-center">Gain</th>
+                {(
+                  [
+                    { key: "name", label: "Player", align: "left" },
+                    { key: "wars", label: "Wars", align: "center" },
+                    { key: "races", label: "Races", align: "center" },
+                    { key: "reviews", label: "Reviews", align: "center" },
+                    { key: "bonus", label: "Bonus", align: "center" },
+                    { key: "invasions", label: "Invasions", align: "center" },
+                    { key: "vods", label: "Management", align: "center" },
+                    { key: "points", label: "Points", align: "center" },
+                    { key: "goldEarned", label: "Gain", align: "center" },
+                  ] as {
+                    key: SortKey;
+                    label: string;
+                    align: "left" | "center";
+                  }[]
+                ).map(({ key, label, align }) => (
+                  <th
+                    key={key}
+                    className={`px-3 py-3 text-${align} cursor-pointer select-none whitespace-nowrap hover:text-slate-100`}
+                    onClick={() => handleSort(key)}
+                  >
+                    {label}
+                    <SortIcon active={sortKey === key} dir={sortDir} />
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
