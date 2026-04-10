@@ -31,7 +31,7 @@ type SharedPayoutResponse = {
     goldPerPoint: number;
   };
   accessRole: {
-    id: string;
+    id: string | null;
     name: string | null;
   };
   entries: SharedPayoutEntry[];
@@ -182,8 +182,7 @@ export default function SharedPayoutClient({ token }: { token: string }) {
           <h1 className="text-2xl font-semibold text-red-200">Access denied</h1>
           <p className="mt-2 text-sm text-red-100/90">{errorMessage}</p>
           <p className="mt-4 text-xs text-slate-300">
-            You must be logged in and have the configured server role to view
-            this session.
+            This shared link may be invalid, expired, or no longer available.
           </p>
           {debug ? (
             <div className="mt-4 rounded-lg border border-slate-700 bg-slate-950/40 p-4 text-xs text-slate-200">
@@ -283,9 +282,11 @@ export default function SharedPayoutClient({ token }: { token: string }) {
                   "en-US",
                 )}
               </p>
-              <p className="mt-3 text-xs text-slate-300">
-                Required role: {data.accessRole.name || data.accessRole.id}
-              </p>
+              {data.accessRole.name || data.accessRole.id ? (
+                <p className="mt-3 text-xs text-slate-300">
+                  Required role: {data.accessRole.name || data.accessRole.id}
+                </p>
+              ) : null}
             </div>
             <div className="w-full max-w-md">
               <input

@@ -1,12 +1,11 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getCurrentUserAccessState } from "@/lib/current-user-access";
 import PayoutClient from "./payout-client";
 
 export default async function PayoutPage() {
-  const session = await getServerSession(authOptions);
+  const accessState = await getCurrentUserAccessState();
 
-  if (!session?.user?.email) {
+  if (accessState.status !== "ok" || !accessState.access.payout) {
     redirect("/");
   }
 

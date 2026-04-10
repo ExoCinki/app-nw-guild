@@ -1,12 +1,11 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { ArchivesClient } from "./archives-client";
+import { getCurrentUserAccessState } from "@/lib/current-user-access";
 
 export default async function ArchivesPage() {
-  const session = await getServerSession(authOptions);
+  const accessState = await getCurrentUserAccessState();
 
-  if (!session?.user?.email) {
+  if (accessState.status !== "ok" || !accessState.access.archives) {
     redirect("/");
   }
 

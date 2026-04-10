@@ -17,6 +17,32 @@ type SelectedGuildResponse = {
   } | null;
 };
 
+type MeResponse = {
+  user: {
+    id: string;
+    displayName: string | null;
+    discordId: string | null;
+    email: string | null;
+    image: string | null;
+  };
+  selectedGuildId: string | null;
+  hasSelectedGuildAccess: boolean;
+  access: {
+    roster: boolean;
+    payout: boolean;
+    configuration: boolean;
+    archives: boolean;
+  };
+};
+
+async function getMe(): Promise<MeResponse> {
+  return apiFetch<MeResponse>(
+    "/api/me",
+    { method: "GET" },
+    "Unable to load profile.",
+  );
+}
+
 async function getSelectedGuild(): Promise<SelectedGuildResponse> {
   try {
     return await apiFetch<SelectedGuildResponse>(
@@ -36,6 +62,13 @@ export function Navbar() {
   const { data: session, status } = useSession();
   const pathname = usePathname();
 
+  const meQuery = useQuery({
+    queryKey: ["me"],
+    queryFn: getMe,
+    enabled: status === "authenticated",
+    ...queryPresets.longLived,
+  });
+
   const selectedGuildQuery = useQuery({
     queryKey: ["selected-guild"],
     queryFn: getSelectedGuild,
@@ -45,6 +78,12 @@ export function Navbar() {
 
   const isOwner = Boolean(session?.user?.isOwner);
   const canAccessAdmin = Boolean(isOwner || session?.user?.isGlobalAdmin);
+  const access = meQuery.data?.access;
+  const canAccessRoster = Boolean(access?.roster);
+  const canAccessPayout = Boolean(access?.payout);
+  const canAccessArchives = Boolean(access?.archives);
+  const canAccessConfiguration = Boolean(access?.configuration);
+  const canShowSelectedGuild = Boolean(meQuery.data?.hasSelectedGuildAccess);
 
   const isActive = (path: string) =>
     pathname === path ? "text-sky-400" : "text-slate-300 hover:text-slate-100";
@@ -73,7 +112,7 @@ export function Navbar() {
             >
               Home
             </Link>
-            {session?.user ? (
+            {session?.user && canAccessRoster ? (
               <Link
                 href="/roster"
                 className={`text-sm font-medium transition ${isActive("/roster")}`}
@@ -81,7 +120,7 @@ export function Navbar() {
                 Roster
               </Link>
             ) : null}
-            {session?.user ? (
+            {session?.user && canAccessPayout ? (
               <Link
                 href="/payout"
                 className={`text-sm font-medium transition ${isActive("/payout")}`}
@@ -89,7 +128,7 @@ export function Navbar() {
                 Payout
               </Link>
             ) : null}
-            {session?.user ? (
+            {session?.user && canAccessArchives ? (
               <Link
                 href="/archives"
                 className={`text-sm font-medium transition ${isActive("/archives")}`}
@@ -101,7 +140,8 @@ export function Navbar() {
 
           {session?.user ? (
             <div className="flex items-center gap-6">
-              {selectedGuildQuery.data?.selectedGuild ? (
+              {canShowSelectedGuild &&
+              selectedGuildQuery.data?.selectedGuild ? (
                 <div className="flex items-center gap-2 rounded-md border border-emerald-700/40 bg-emerald-900/20 px-2 py-1">
                   {selectedGuildQuery.data.selectedGuild.iconUrl ? (
                     <Image
@@ -139,12 +179,14 @@ export function Navbar() {
                   {session.user.displayName ?? session.user.name ?? "User"}
                 </span>
 
-                <Link
-                  href="/configuration"
-                  className={`text-sm font-medium transition ${isActive("/configuration")}`}
-                >
-                  Configuration
-                </Link>
+                {canAccessConfiguration ? (
+                  <Link
+                    href="/configuration"
+                    className={`text-sm font-medium transition ${isActive("/configuration")}`}
+                  >
+                    Configuration
+                  </Link>
+                ) : null}
               </div>
 
               {canAccessAdmin ? (

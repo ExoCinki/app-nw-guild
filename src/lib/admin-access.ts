@@ -5,6 +5,20 @@ import { prisma } from "@/lib/prisma";
 export type GuildAccessScope = "roster" | "payout" | "configuration" | "archives";
 export type GuildAccessMode = "read" | "write";
 
+export type GuildScopeReadAccessSummary = {
+    roster: boolean;
+    payout: boolean;
+    configuration: boolean;
+    archives: boolean;
+};
+
+const EMPTY_GUILD_SCOPE_READ_ACCESS: GuildScopeReadAccessSummary = {
+    roster: false,
+    payout: false,
+    configuration: false,
+    archives: false,
+};
+
 async function getCurrentAdminIdentity() {
     const session = await getServerSession(authOptions);
     const ownerDiscordId = process.env.OWNER_DISCORD_ID;
@@ -174,4 +188,57 @@ export async function hasGuildScopeAccess(params: {
     return params.mode === "read"
         ? access.canReadConfiguration
         : access.canWriteConfiguration;
+}
+
+export async function getGuildScopeReadAccessSummary(params: {
+    userId: string;
+    discordGuildId: string;
+    isOwner: boolean;
+    isGlobalAdmin?: boolean;
+}): Promise<GuildScopeReadAccessSummary> {
+    if (params.isOwner) {
+        return {
+            roster: true,
+            payout: true,
+            configuration: true,
+            archives: true,
+        };
+    }
+
+    const globalAdmin = params.isGlobalAdmin ?? (await isGlobalAdmin(params.userId));
+
+    if (globalAdmin) {
+        return {
+            roster: true,
+            payout: true,
+            configuration: true,
+            archives: true,
+        };
+    }
+
+    const access = await prisma.guildUserAccess.findUnique({
+        where: {
+            userId_discordGuildId: {
+                userId: params.userId,
+                discordGuildId: params.discordGuildId,
+            },
+        },
+        select: {
+            canReadRoster: true,
+            canReadPayout: true,
+            canReadConfiguration: true,
+            canReadArchives: true,
+        },
+    });
+
+    if (!access) {
+        return EMPTY_GUILD_SCOPE_READ_ACCESS;
+    }
+
+    return {
+        roster: access.canReadRoster,
+        payout: access.canReadPayout,
+        configuration: access.canReadConfiguration,
+        archives: access.canReadArchives,
+    };
 }

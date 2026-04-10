@@ -1,12 +1,11 @@
-import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { ServerConfigurationCard } from "@/components/server-configuration-card";
+import { getCurrentUserAccessState } from "@/lib/current-user-access";
 
 export default async function ConfigurationPage() {
-  const session = await getServerSession(authOptions);
+  const accessState = await getCurrentUserAccessState();
 
-  if (!session?.user?.email) {
+  if (accessState.status !== "ok" || !accessState.access.configuration) {
     redirect("/");
   }
 
