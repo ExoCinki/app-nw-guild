@@ -42,6 +42,14 @@ type SharedPayoutError = Error & {
   debug?: {
     linkedDiscordUserId?: string;
     oauthDiscordUserId?: string | null;
+    targetGuild?: {
+      id: string;
+      name: string | null;
+    };
+    discordTokens?: {
+      hasAccessToken: boolean;
+      hasRefreshToken: boolean;
+    };
     requiredRole?: {
       id: string;
       name: string | null;
@@ -134,6 +142,15 @@ export default function SharedPayoutClient({ token }: { token: string }) {
               </p>
               <p className="mt-2">
                 OAuth Discord user ID: {debug.oauthDiscordUserId || "unknown"}
+              </p>
+              <p className="mt-2">
+                Target guild: {debug.targetGuild?.name || "Unknown guild"} (
+                {debug.targetGuild?.id || "n/a"})
+              </p>
+              <p className="mt-2">
+                Discord tokens: access=
+                {debug.discordTokens?.hasAccessToken ? "yes" : "no"}, refresh=
+                {debug.discordTokens?.hasRefreshToken ? "yes" : "no"}
               </p>
               <p className="mt-2">
                 Verification source: {debug.verificationSource || "unknown"}

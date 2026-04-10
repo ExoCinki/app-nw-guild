@@ -320,7 +320,10 @@ export async function GET(
                 provider: "discord",
             },
             select: {
+                id: true,
                 providerAccountId: true,
+                access_token: true,
+                refresh_token: true,
             },
         });
 
@@ -410,6 +413,11 @@ export async function GET(
             );
         }
 
+        const sharedGuild = await prisma.whitelistedGuild.findUnique({
+            where: { discordGuildId: share.discordGuildId },
+            select: { name: true },
+        });
+
         const userMembership = await fetchCurrentUserGuildRoleMatch({
             userId: user.id,
             guildId: share.discordGuildId,
@@ -478,6 +486,14 @@ export async function GET(
                     debug: {
                         linkedDiscordUserId: user.discordId,
                         oauthDiscordUserId: discordAccount?.providerAccountId ?? null,
+                        targetGuild: {
+                            id: share.discordGuildId,
+                            name: sharedGuild?.name ?? null,
+                        },
+                        discordTokens: {
+                            hasAccessToken: Boolean(discordAccount?.access_token),
+                            hasRefreshToken: Boolean(discordAccount?.refresh_token),
+                        },
                         requiredRole: {
                             id: guildConfiguration.zooMemberRoleId,
                             name:
