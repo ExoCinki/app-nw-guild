@@ -37,6 +37,21 @@ type SharedPayoutResponse = {
   entries: SharedPayoutEntry[];
 };
 
+type SharedPayoutError = Error & {
+  status?: number;
+  debug?: {
+    requiredRole?: {
+      id: string;
+      name: string | null;
+    };
+    verificationSource?: string;
+    detectedRoles?: Array<{
+      id: string;
+      name: string | null;
+    }>;
+  };
+};
+
 export default function SharedPayoutClient({ token }: { token: string }) {
   const [search, setSearch] = useState("");
 
@@ -76,10 +91,12 @@ export default function SharedPayoutClient({ token }: { token: string }) {
   }
 
   if (sharedPayoutQuery.isError || !sharedPayoutQuery.data) {
+    const queryError = sharedPayoutQuery.error as SharedPayoutError | null;
     const errorMessage =
-      sharedPayoutQuery.error instanceof Error
-        ? sharedPayoutQuery.error.message
+      queryError instanceof Error
+        ? queryError.message
         : "Unable to open this shared payout session";
+    const debug = queryError?.debug;
 
     return (
       <div className="min-h-screen bg-slate-950 px-6 pb-8 pt-24 text-slate-100">
@@ -90,6 +107,31 @@ export default function SharedPayoutClient({ token }: { token: string }) {
             You must be logged in and have the configured server role to view
             this session.
           </p>
+          {debug ? (
+            <div className="mt-4 rounded-lg border border-slate-700 bg-slate-950/40 p-4 text-xs text-slate-200">
+              <p>
+                Required role: {debug.requiredRole?.name || "Unknown role"} (
+                {debug.requiredRole?.id || "n/a"})
+              </p>
+              <p className="mt-2">
+                Verification source: {debug.verificationSource || "unknown"}
+              </p>
+              <div className="mt-2">
+                <p>Detected roles:</p>
+                {debug.detectedRoles && debug.detectedRoles.length > 0 ? (
+                  <ul className="mt-1 space-y-1 text-slate-300">
+                    {debug.detectedRoles.map((role) => (
+                      <li key={role.id}>
+                        {role.name || "Unknown role"} ({role.id})
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-slate-400">No roles detected.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     );

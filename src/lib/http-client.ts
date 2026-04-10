@@ -1,21 +1,28 @@
 type ErrorPayload = {
     error?: string;
     message?: string;
+    debug?: unknown;
 };
 
 export class ApiError extends Error {
     status: number;
+    debug?: unknown;
 
-    constructor(status: number, message: string) {
+    constructor(status: number, message: string, debug?: unknown) {
         super(message);
         this.name = "ApiError";
         this.status = status;
+        this.debug = debug;
     }
 }
 
-async function parseErrorMessage(response: Response, fallback: string) {
+async function parseErrorPayload(response: Response, fallback: string) {
     const payload = (await response.json().catch(() => null)) as ErrorPayload | null;
-    return payload?.error ?? payload?.message ?? fallback;
+
+    return {
+        message: payload?.error ?? payload?.message ?? fallback,
+        debug: payload?.debug,
+    };
 }
 
 export async function apiFetch<T>(
@@ -29,8 +36,8 @@ export async function apiFetch<T>(
     });
 
     if (!response.ok) {
-        const message = await parseErrorMessage(response, fallbackError);
-        throw new ApiError(response.status, message);
+        const payload = await parseErrorPayload(response, fallbackError);
+        throw new ApiError(response.status, payload.message, payload.debug);
     }
 
     return response.json() as Promise<T>;
@@ -47,7 +54,7 @@ export async function apiFetchVoid(
     });
 
     if (!response.ok) {
-        const message = await parseErrorMessage(response, fallbackError);
-        throw new ApiError(response.status, message);
+        const payload = await parseErrorPayload(response, fallbackError);
+        throw new ApiError(response.status, payload.message, payload.debug);
     }
 }

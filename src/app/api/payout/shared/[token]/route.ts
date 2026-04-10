@@ -13,6 +13,13 @@ type DiscordGuildMemberResponse = {
     roles?: string[];
 };
 
+type RoleMatchResult = {
+    ok: true;
+    hasRole: boolean;
+    source: "user-token" | "bot-token";
+    roles: string[];
+};
+
 async function refreshDiscordAccessToken(
     refreshToken: string,
 ): Promise<{
@@ -71,7 +78,7 @@ async function fetchCurrentUserGuildRoleMatch(params: {
     userId: string;
     guildId: string;
     requiredRoleId: string;
-}): Promise<{ ok: true; hasRole: boolean } | null> {
+}): Promise<RoleMatchResult | null> {
     const account = await prisma.account.findFirst({
         where: {
             userId: params.userId,
@@ -116,7 +123,7 @@ async function fetchCurrentUserGuildRoleMatch(params: {
     }
 
     if (response.status === 404) {
-        return { ok: true, hasRole: false };
+        return { ok: true, hasRole: false, source: "user-token", roles: [] };
     }
 
     if (!response.ok) {
@@ -128,6 +135,8 @@ async function fetchCurrentUserGuildRoleMatch(params: {
     return {
         ok: true,
         hasRole: Boolean(member.roles?.includes(params.requiredRoleId)),
+        source: "user-token",
+        roles: member.roles ?? [],
     };
 }
 
@@ -149,7 +158,7 @@ async function fetchGuildMemberRoleMatch(params: {
     guildId: string;
     discordUserId: string;
     requiredRoleId: string;
-}): Promise<{ ok: true; hasRole: boolean } | { ok: false; status: number; error: string }> {
+}): Promise<RoleMatchResult | { ok: false; status: number; error: string }> {
     const tokens = getDiscordBotTokens();
 
     if (tokens.length === 0) {
@@ -175,7 +184,7 @@ async function fetchGuildMemberRoleMatch(params: {
         );
 
         if (response.status === 404) {
-            return { ok: true, hasRole: false };
+            return { ok: true, hasRole: false, source: "bot-token", roles: [] };
         }
 
         if (!response.ok) {
@@ -189,6 +198,8 @@ async function fetchGuildMemberRoleMatch(params: {
         return {
             ok: true,
             hasRole: Boolean(member.roles?.includes(params.requiredRoleId)),
+            source: "bot-token",
+            roles: member.roles ?? [],
         };
     }
 
@@ -323,10 +334,63 @@ export async function GET(
         }
 
         if (!membership.hasRole) {
+            const roleNameById = new Map<string, string>();
+            const uniqueRoleIds = Array.from(new Set([
+                guildConfiguration.zooMemberRoleId,
+                ...membership.roles,
+            ]));
+
+            if (uniqueRoleIds.length > 0) {
+                const botTokens = getDiscordBotTokens();
+
+                for (const botToken of botTokens) {
+                    const rolesResponse = await fetch(
+                        `https://discord.com/api/v10/guilds/${share.discordGuildId}/roles`,
+                        {
+                            headers: {
+                                Authorization: `Bot ${botToken}`,
+                            },
+                            cache: "no-store",
+                        },
+                    );
+
+                    if (!rolesResponse.ok) {
+                        continue;
+                    }
+
+                    const rolesPayload = (await rolesResponse.json()) as Array<{
+                        id: string;
+                        name: string;
+                    }>;
+
+                    for (const role of rolesPayload) {
+                        if (uniqueRoleIds.includes(role.id)) {
+                            roleNameById.set(role.id, role.name);
+                        }
+                    }
+
+                    break;
+                }
+            }
+
             return NextResponse.json(
                 {
                     error:
                         "You do not have the required role for this shared session. If you recently changed permissions, sign out and sign back in with Discord.",
+                    debug: {
+                        requiredRole: {
+                            id: guildConfiguration.zooMemberRoleId,
+                            name:
+                                guildConfiguration.zooMemberRoleName ??
+                                roleNameById.get(guildConfiguration.zooMemberRoleId) ??
+                                null,
+                        },
+                        verificationSource: membership.source,
+                        detectedRoles: membership.roles.map((roleId) => ({
+                            id: roleId,
+                            name: roleNameById.get(roleId) ?? null,
+                        })),
+                    },
                 },
                 { status: 403 },
             );
