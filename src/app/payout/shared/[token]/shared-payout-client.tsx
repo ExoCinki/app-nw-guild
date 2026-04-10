@@ -137,8 +137,10 @@ export default function SharedPayoutClient({ token }: { token: string }) {
 
     const searched = search.trim()
       ? entries.filter((entry) => {
-          const name = (entry.displayName || entry.username).toLowerCase();
-          return name.includes(search.toLowerCase());
+          const needle = search.toLowerCase();
+          const displayName = (entry.displayName || "").toLowerCase();
+          const username = entry.username.toLowerCase();
+          return displayName.includes(needle) || username.includes(needle);
         })
       : entries;
 
