@@ -94,12 +94,13 @@ async function fetchCurrentUserGuildRoleMatch(params: {
         },
         select: {
             id: true,
+            providerAccountId: true,
             access_token: true,
             refresh_token: true,
         },
     });
 
-    if (!account?.access_token) {
+    if (!account) {
         return null;
     }
 
@@ -111,7 +112,30 @@ async function fetchCurrentUserGuildRoleMatch(params: {
             cache: "no-store",
         });
 
-    let response = await fetchMembership(account.access_token);
+    let accessToken = account.access_token;
+
+    if (!accessToken && account.refresh_token) {
+        const refreshed = await refreshDiscordAccessToken(account.refresh_token);
+
+        if (refreshed) {
+            await prisma.account.update({
+                where: { id: account.id },
+                data: {
+                    access_token: refreshed.accessToken,
+                    refresh_token: refreshed.refreshToken,
+                    expires_at: refreshed.expiresAt,
+                },
+            });
+
+            accessToken = refreshed.accessToken;
+        }
+    }
+
+    if (!accessToken) {
+        return null;
+    }
+
+    let response = await fetchMembership(accessToken);
 
     if ((response.status === 401 || response.status === 403) && account.refresh_token) {
         const refreshed = await refreshDiscordAccessToken(account.refresh_token);
@@ -283,11 +307,39 @@ export async function GET(
             },
         });
 
-        if (!user?.discordId) {
+        if (!user) {
+            return NextResponse.json(
+                { error: "User not found" },
+                { status: 404 },
+            );
+        }
+
+        const discordAccount = await prisma.account.findFirst({
+            where: {
+                userId: user.id,
+                provider: "discord",
+            },
+            select: {
+                providerAccountId: true,
+            },
+        });
+
+        const discordUserId = discordAccount?.providerAccountId ?? user.discordId;
+
+        if (!discordUserId) {
             return NextResponse.json(
                 { error: "Discord account not linked" },
                 { status: 403 },
             );
+        }
+
+        if (user.discordId !== discordUserId) {
+            await prisma.user.update({
+                where: { id: user.id },
+                data: {
+                    discordId: discordUserId,
+                },
+            });
         }
 
         const tokenHash = hashShareToken(token);
@@ -368,7 +420,7 @@ export async function GET(
             userMembership ??
             (await fetchGuildMemberRoleMatch({
                 guildId: share.discordGuildId,
-                discordUserId: user.discordId,
+                discordUserId,
                 requiredRoleId: guildConfiguration.zooMemberRoleId,
             }));
 
@@ -425,6 +477,7 @@ export async function GET(
                         "You do not have the required role for this shared session. If you recently changed permissions, sign out and sign back in with Discord.",
                     debug: {
                         linkedDiscordUserId: user.discordId,
+                        oauthDiscordUserId: discordAccount?.providerAccountId ?? null,
                         requiredRole: {
                             id: guildConfiguration.zooMemberRoleId,
                             name:

@@ -41,6 +41,7 @@ type SharedPayoutError = Error & {
   status?: number;
   debug?: {
     linkedDiscordUserId?: string;
+    oauthDiscordUserId?: string | null;
     requiredRole?: {
       id: string;
       name: string | null;
@@ -130,6 +131,9 @@ export default function SharedPayoutClient({ token }: { token: string }) {
               </p>
               <p className="mt-2">
                 Linked Discord user ID: {debug.linkedDiscordUserId || "unknown"}
+              </p>
+              <p className="mt-2">
+                OAuth Discord user ID: {debug.oauthDiscordUserId || "unknown"}
               </p>
               <p className="mt-2">
                 Verification source: {debug.verificationSource || "unknown"}
