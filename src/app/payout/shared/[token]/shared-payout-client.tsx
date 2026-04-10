@@ -42,6 +42,12 @@ type SharedPayoutError = Error & {
   debug?: {
     linkedDiscordUserId?: string;
     oauthDiscordUserId?: string | null;
+    oauthIdentity?: {
+      oauthUserId: string | null;
+      oauthUsername: string | null;
+      oauthGlobalName: string | null;
+      canSeeTargetGuild: boolean | null;
+    };
     targetGuild?: {
       id: string;
       name: string | null;
@@ -144,8 +150,25 @@ export default function SharedPayoutClient({ token }: { token: string }) {
                 OAuth Discord user ID: {debug.oauthDiscordUserId || "unknown"}
               </p>
               <p className="mt-2">
+                OAuth identity:{" "}
+                {debug.oauthIdentity?.oauthGlobalName ||
+                  debug.oauthIdentity?.oauthUsername ||
+                  "unknown"}
+                {debug.oauthIdentity?.oauthUserId
+                  ? ` (${debug.oauthIdentity.oauthUserId})`
+                  : ""}
+              </p>
+              <p className="mt-2">
                 Target guild: {debug.targetGuild?.name || "Unknown guild"} (
                 {debug.targetGuild?.id || "n/a"})
+              </p>
+              <p className="mt-2">
+                OAuth can see target guild:{" "}
+                {debug.oauthIdentity?.canSeeTargetGuild === null
+                  ? "unknown"
+                  : debug.oauthIdentity?.canSeeTargetGuild
+                    ? "yes"
+                    : "no"}
               </p>
               <p className="mt-2">
                 Discord tokens: access=

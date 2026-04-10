@@ -20,6 +20,13 @@ type MembershipDebug = {
     roles: string[];
 };
 
+type DiscordAccountDebug = {
+    oauthUserId: string | null;
+    oauthUsername: string | null;
+    oauthGlobalName: string | null;
+    canSeeTargetGuild: boolean | null;
+};
+
 type RoleMatchResult = {
     ok: true;
     hasRole: boolean;
@@ -79,6 +86,94 @@ async function refreshDiscordAccessToken(
             typeof payload.expires_in === "number"
                 ? Math.floor(Date.now() / 1000) + payload.expires_in
                 : null,
+    };
+}
+
+async function getDiscordAccountDebug(userId: string, guildId: string): Promise<DiscordAccountDebug> {
+    const account = await prisma.account.findFirst({
+        where: {
+            userId,
+            provider: "discord",
+        },
+        select: {
+            id: true,
+            providerAccountId: true,
+            access_token: true,
+            refresh_token: true,
+        },
+    });
+
+    if (!account) {
+        return {
+            oauthUserId: null,
+            oauthUsername: null,
+            oauthGlobalName: null,
+            canSeeTargetGuild: null,
+        };
+    }
+
+    let accessToken = account.access_token;
+
+    if (!accessToken && account.refresh_token) {
+        const refreshed = await refreshDiscordAccessToken(account.refresh_token);
+
+        if (refreshed) {
+            await prisma.account.update({
+                where: { id: account.id },
+                data: {
+                    access_token: refreshed.accessToken,
+                    refresh_token: refreshed.refreshToken,
+                    expires_at: refreshed.expiresAt,
+                },
+            });
+
+            accessToken = refreshed.accessToken;
+        }
+    }
+
+    if (!accessToken) {
+        return {
+            oauthUserId: account.providerAccountId,
+            oauthUsername: null,
+            oauthGlobalName: null,
+            canSeeTargetGuild: null,
+        };
+    }
+
+    const [meResponse, guildsResponse] = await Promise.all([
+        fetch("https://discord.com/api/v10/users/@me", {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+        }),
+        fetch("https://discord.com/api/v10/users/@me/guilds", {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+        }),
+    ]);
+
+    const mePayload = meResponse.ok
+        ? ((await meResponse.json()) as {
+            id: string;
+            username: string;
+            global_name?: string | null;
+        })
+        : null;
+
+    const guildsPayload = guildsResponse.ok
+        ? ((await guildsResponse.json()) as Array<{ id: string }>)
+        : null;
+
+    return {
+        oauthUserId: mePayload?.id ?? account.providerAccountId,
+        oauthUsername: mePayload?.username ?? null,
+        oauthGlobalName: mePayload?.global_name ?? null,
+        canSeeTargetGuild: guildsPayload
+            ? guildsPayload.some((guild) => guild.id === guildId)
+            : null,
     };
 }
 
@@ -417,6 +512,7 @@ export async function GET(
             where: { discordGuildId: share.discordGuildId },
             select: { name: true },
         });
+        const discordAccountDebug = await getDiscordAccountDebug(user.id, share.discordGuildId);
 
         const userMembership = await fetchCurrentUserGuildRoleMatch({
             userId: user.id,
@@ -486,6 +582,7 @@ export async function GET(
                     debug: {
                         linkedDiscordUserId: user.discordId,
                         oauthDiscordUserId: discordAccount?.providerAccountId ?? null,
+                        oauthIdentity: discordAccountDebug,
                         targetGuild: {
                             id: share.discordGuildId,
                             name: sharedGuild?.name ?? null,
