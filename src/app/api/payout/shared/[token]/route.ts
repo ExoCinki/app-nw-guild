@@ -10,7 +10,13 @@ const SHARE_LINK_TTL_DAYS = 30;
 const preferredBotTokenByGuild = new Map<string, string>();
 
 type DiscordGuildMemberResponse = {
+    nick?: string | null;
     roles?: string[];
+    user?: {
+        id: string;
+        username: string;
+        global_name?: string | null;
+    };
 };
 
 type MembershipDebug = {
@@ -378,6 +384,73 @@ async function fetchGuildMemberRoleMatch(params: {
     };
 }
 
+async function searchGuildMemberRoleMatch(params: {
+    guildId: string;
+    discordUserId: string;
+    requiredRoleId: string;
+    queries: string[];
+}): Promise<RoleMatchResult | null> {
+    const tokens = getDiscordBotTokens();
+
+    if (tokens.length === 0) {
+        return null;
+    }
+
+    const preferred = preferredBotTokenByGuild.get(params.guildId);
+    const orderedTokens = preferred
+        ? [preferred, ...tokens.filter((token) => token !== preferred)]
+        : tokens;
+
+    const normalizedQueries = Array.from(
+        new Set(params.queries.map((query) => query.trim()).filter(Boolean)),
+    );
+
+    for (const botToken of orderedTokens) {
+        for (const query of normalizedQueries) {
+            const response = await fetch(
+                `https://discord.com/api/v10/guilds/${params.guildId}/members/search?query=${encodeURIComponent(query)}&limit=100`,
+                {
+                    headers: {
+                        Authorization: `Bot ${botToken}`,
+                    },
+                    cache: "no-store",
+                },
+            );
+
+            if (!response.ok) {
+                continue;
+            }
+
+            preferredBotTokenByGuild.set(params.guildId, botToken);
+            const members = (await response.json()) as DiscordGuildMemberResponse[];
+            const matchedMember = members.find(
+                (member) => member.user?.id === params.discordUserId,
+            );
+
+            if (!matchedMember) {
+                continue;
+            }
+
+            return {
+                ok: true,
+                hasRole: Boolean(matchedMember.roles?.includes(params.requiredRoleId)),
+                source: "bot-token",
+                roles: matchedMember.roles ?? [],
+                debug: {
+                    source: "bot-token",
+                    status: (matchedMember.roles ?? []).includes(params.requiredRoleId)
+                        ? "matched"
+                        : "missing-role",
+                    httpStatus: response.status,
+                    roles: matchedMember.roles ?? [],
+                },
+            };
+        }
+    }
+
+    return null;
+}
+
 function resolveMultiplier(value: number | null | undefined): number {
     return value || 1;
 }
@@ -520,13 +593,33 @@ export async function GET(
             requiredRoleId: guildConfiguration.zooMemberRoleId,
         });
 
-        const membership =
+        let membership =
             userMembership ??
             (await fetchGuildMemberRoleMatch({
                 guildId: share.discordGuildId,
                 discordUserId,
                 requiredRoleId: guildConfiguration.zooMemberRoleId,
             }));
+
+        if (
+            membership.ok &&
+            !membership.hasRole &&
+            membership.debug.status === "member-not-found"
+        ) {
+            const searchedMembership = await searchGuildMemberRoleMatch({
+                guildId: share.discordGuildId,
+                discordUserId,
+                requiredRoleId: guildConfiguration.zooMemberRoleId,
+                queries: [
+                    discordAccountDebug.oauthGlobalName ?? "",
+                    discordAccountDebug.oauthUsername ?? "",
+                ],
+            });
+
+            if (searchedMembership) {
+                membership = searchedMembership;
+            }
+        }
 
         if (!membership.ok) {
             return NextResponse.json(
