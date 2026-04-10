@@ -13,6 +13,124 @@ type DiscordGuildMemberResponse = {
     roles?: string[];
 };
 
+async function refreshDiscordAccessToken(
+    refreshToken: string,
+): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number | null;
+} | null> {
+    const clientId = process.env.DISCORD_CLIENT_ID;
+    const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+        return null;
+    }
+
+    const body = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+    });
+
+    const response = await fetch("https://discord.com/api/oauth2/token", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body,
+        cache: "no-store",
+    });
+
+    if (!response.ok) {
+        return null;
+    }
+
+    const payload = (await response.json()) as {
+        access_token?: string;
+        refresh_token?: string;
+        expires_in?: number;
+    };
+
+    if (!payload.access_token) {
+        return null;
+    }
+
+    return {
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token ?? refreshToken,
+        expiresAt:
+            typeof payload.expires_in === "number"
+                ? Math.floor(Date.now() / 1000) + payload.expires_in
+                : null,
+    };
+}
+
+async function fetchCurrentUserGuildRoleMatch(params: {
+    userId: string;
+    guildId: string;
+    requiredRoleId: string;
+}): Promise<{ ok: true; hasRole: boolean } | null> {
+    const account = await prisma.account.findFirst({
+        where: {
+            userId: params.userId,
+            provider: "discord",
+        },
+        select: {
+            id: true,
+            access_token: true,
+            refresh_token: true,
+        },
+    });
+
+    if (!account?.access_token) {
+        return null;
+    }
+
+    const fetchMembership = async (accessToken: string) =>
+        fetch(`https://discord.com/api/v10/users/@me/guilds/${params.guildId}/member`, {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+            },
+            cache: "no-store",
+        });
+
+    let response = await fetchMembership(account.access_token);
+
+    if ((response.status === 401 || response.status === 403) && account.refresh_token) {
+        const refreshed = await refreshDiscordAccessToken(account.refresh_token);
+
+        if (refreshed) {
+            await prisma.account.update({
+                where: { id: account.id },
+                data: {
+                    access_token: refreshed.accessToken,
+                    refresh_token: refreshed.refreshToken,
+                    expires_at: refreshed.expiresAt,
+                },
+            });
+
+            response = await fetchMembership(refreshed.accessToken);
+        }
+    }
+
+    if (response.status === 404) {
+        return { ok: true, hasRole: false };
+    }
+
+    if (!response.ok) {
+        return null;
+    }
+
+    const member = (await response.json()) as DiscordGuildMemberResponse;
+
+    return {
+        ok: true,
+        hasRole: Boolean(member.roles?.includes(params.requiredRoleId)),
+    };
+}
+
 function hashShareToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
 }
@@ -183,11 +301,19 @@ export async function GET(
             );
         }
 
-        const membership = await fetchGuildMemberRoleMatch({
+        const userMembership = await fetchCurrentUserGuildRoleMatch({
+            userId: user.id,
             guildId: share.discordGuildId,
-            discordUserId: user.discordId,
             requiredRoleId: guildConfiguration.zooMemberRoleId,
         });
+
+        const membership =
+            userMembership ??
+            (await fetchGuildMemberRoleMatch({
+                guildId: share.discordGuildId,
+                discordUserId: user.discordId,
+                requiredRoleId: guildConfiguration.zooMemberRoleId,
+            }));
 
         if (!membership.ok) {
             return NextResponse.json(
@@ -198,7 +324,10 @@ export async function GET(
 
         if (!membership.hasRole) {
             return NextResponse.json(
-                { error: "You do not have the required role for this shared session" },
+                {
+                    error:
+                        "You do not have the required role for this shared session. If you recently changed permissions, sign out and sign back in with Discord.",
+                },
                 { status: 403 },
             );
         }
