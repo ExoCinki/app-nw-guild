@@ -97,7 +97,9 @@ export default function SharedPayoutClient({ token }: { token: string }) {
   });
 
   const filteredEntries = useMemo(() => {
-    const entries = sharedPayoutQuery.data?.entries ?? [];
+    const entries = (sharedPayoutQuery.data?.entries ?? []).filter(
+      (entry) => entry.goldEarned > 0,
+    );
 
     if (!search.trim()) {
       return entries;
