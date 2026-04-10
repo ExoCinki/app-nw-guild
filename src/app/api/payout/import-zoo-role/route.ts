@@ -1,9 +1,7 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { publishLiveUpdate } from "@/lib/live-updates";
+import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -21,10 +19,9 @@ type DiscordGuildMember = {
 function getDiscordBotTokens(): string[] {
     const multi = (process.env.DISCORD_BOT_TOKENS ?? "")
         .split(",")
-        .map((token) => token.trim())
+        .map((t) => t.trim())
         .filter(Boolean);
     const single = (process.env.DISCORD_BOT_TOKEN ?? "").trim();
-
     return [...new Set([...multi, ...(single ? [single] : [])])];
 }
 
@@ -35,162 +32,100 @@ async function fetchAllGuildMembersWithToken(
     const allMembers: DiscordGuildMember[] = [];
     let after = "0";
 
-    // Guardrail: 50 pages * 1000 = 50k members max per import.
+    // Guardrail: 50 pages × 1000 = 50 000 membres max par import.
     for (let page = 0; page < 50; page += 1) {
-        const response = await fetch(
+        const res = await fetch(
             `https://discord.com/api/v10/guilds/${guildId}/members?limit=1000&after=${after}`,
-            {
-                headers: {
-                    Authorization: `Bot ${botToken}`,
-                },
-                cache: "no-store",
-            },
+            { headers: { Authorization: `Bot ${botToken}` }, cache: "no-store" },
         );
 
-        if (!response.ok) {
-            return null;
-        }
+        if (!res.ok) return null;
 
-        const pageMembers = (await response.json()) as DiscordGuildMember[];
+        const pageMembers = (await res.json()) as DiscordGuildMember[];
 
-        if (!Array.isArray(pageMembers) || pageMembers.length === 0) {
-            break;
-        }
+        if (!Array.isArray(pageMembers) || pageMembers.length === 0) break;
 
         allMembers.push(...pageMembers);
 
-        if (pageMembers.length < 1000) {
-            break;
-        }
+        if (pageMembers.length < 1000) break;
 
-        const last = pageMembers[pageMembers.length - 1];
-        after = last.user.id;
+        after = pageMembers[pageMembers.length - 1].user.id;
     }
 
     return allMembers;
 }
 
-export async function POST(request: NextRequest) {
-    try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+export const POST = apiHandler("POST /api/payout/import-zoo-role", async (request: NextRequest) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
 
-        const payload = (await request.json()) as {
-            sessionId: string;
-            guildId?: string;
-        };
+    const payload = (await request.json()) as { sessionId: string; guildId?: string };
 
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            payload.guildId ?? null,
-            "payout",
-            "write",
-        );
+    const guild = await requireGuildAuth(auth.email, payload.guildId, "payout", "write");
+    if ("response" in guild) return guild.response;
 
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
+    const targetSession = await prisma.payoutSession.findFirst({
+        where: { id: payload.sessionId, discordGuildId: guild.resolved.guildId },
+        select: { id: true },
+    });
 
-        const targetSession = await prisma.payoutSession.findFirst({
-            where: {
-                id: payload.sessionId,
-                discordGuildId: resolved.guildId,
-            },
-            select: { id: true },
-        });
+    if (!targetSession) {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
 
-        if (!targetSession) {
-            return NextResponse.json({ error: "Session not found" }, { status: 404 });
-        }
+    const config = await prisma.guildConfiguration.findUnique({
+        where: { discordGuildId: guild.resolved.guildId },
+        select: { zooMemberRoleId: true },
+    });
 
-        const config = await prisma.guildConfiguration.findUnique({
-            where: { discordGuildId: resolved.guildId },
-            select: { zooMemberRoleId: true },
-        });
-
-        if (!config?.zooMemberRoleId) {
-            return NextResponse.json(
-                {
-                    error:
-                        "Zoo member role is not configured for this server. Set it in Configuration first.",
-                },
-                { status: 400 },
-            );
-        }
-
-        const tokens = getDiscordBotTokens();
-        if (tokens.length === 0) {
-            return NextResponse.json(
-                { error: "No bot token configured" },
-                { status: 500 },
-            );
-        }
-
-        let members: DiscordGuildMember[] | null = null;
-
-        for (const token of tokens) {
-            members = await fetchAllGuildMembersWithToken(resolved.guildId, token);
-            if (members) {
-                break;
-            }
-        }
-
-        if (!members) {
-            return NextResponse.json(
-                {
-                    error:
-                        "Unable to fetch Discord members. Check bot permissions and Server Members Intent.",
-                },
-                { status: 503 },
-            );
-        }
-
-        const zooMembers = members.filter(
-            (member) =>
-                member.roles?.includes(config.zooMemberRoleId as string) &&
-                !member.user.bot,
-        );
-
-        if (zooMembers.length === 0) {
-            return NextResponse.json({ imported: 0, matched: 0 });
-        }
-
-        const uniqueByDiscordUserId = new Map(
-            zooMembers.map((member) => [member.user.id, member]),
-        );
-
-        const rows = Array.from(uniqueByDiscordUserId.values()).map((member) => ({
-            sessionId: payload.sessionId,
-            discordGuildId: resolved.guildId,
-            discordUserId: member.user.id,
-            username: member.user.username,
-            displayName:
-                member.nick || member.user.global_name || member.user.username,
-        }));
-
-        const result = await prisma.payoutEntry.createMany({
-            data: rows,
-            skipDuplicates: true,
-        });
-
-        if (result.count > 0) {
-            publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
-        }
-
-        return NextResponse.json({
-            imported: result.count,
-            matched: rows.length,
-        });
-    } catch (error) {
-        console.error("POST /api/payout/import-zoo-role", error);
+    if (!config?.zooMemberRoleId) {
         return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 },
+            { error: "Zoo member role is not configured for this server. Set it in Configuration first." },
+            { status: 400 },
         );
     }
-}
+
+    const tokens = getDiscordBotTokens();
+    if (tokens.length === 0) {
+        return NextResponse.json({ error: "No bot token configured" }, { status: 500 });
+    }
+
+    let members: DiscordGuildMember[] | null = null;
+    for (const token of tokens) {
+        members = await fetchAllGuildMembersWithToken(guild.resolved.guildId, token);
+        if (members) break;
+    }
+
+    if (!members) {
+        return NextResponse.json(
+            { error: "Unable to fetch Discord members. Check bot permissions and Server Members Intent." },
+            { status: 503 },
+        );
+    }
+
+    const zooMembers = members.filter(
+        (member) => member.roles?.includes(config.zooMemberRoleId as string) && !member.user.bot,
+    );
+
+    if (zooMembers.length === 0) {
+        return NextResponse.json({ imported: 0, matched: 0 });
+    }
+
+    const uniqueByDiscordUserId = new Map(zooMembers.map((m) => [m.user.id, m]));
+
+    const rows = Array.from(uniqueByDiscordUserId.values()).map((member) => ({
+        sessionId: payload.sessionId,
+        discordGuildId: guild.resolved.guildId,
+        discordUserId: member.user.id,
+        username: member.user.username,
+        displayName: member.nick || member.user.global_name || member.user.username,
+    }));
+
+    const result = await prisma.payoutEntry.createMany({ data: rows, skipDuplicates: true });
+
+    if (result.count > 0) {
+        publishLiveUpdate({ topic: "payout", guildId: guild.resolved.guildId });
+    }
+
+    return NextResponse.json({ imported: result.count, matched: rows.length });
+});

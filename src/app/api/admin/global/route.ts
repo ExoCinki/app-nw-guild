@@ -200,6 +200,8 @@ export async function GET(request: NextRequest) {
                     canWriteRoster: true,
                     canReadPayout: true,
                     canWritePayout: true,
+                    canReadScoreboard: true,
+                    canWriteScoreboard: true,
                     canReadConfiguration: true,
                     canWriteConfiguration: true,
                     canReadArchives: true,
@@ -262,6 +264,8 @@ export async function PATCH(request: NextRequest) {
             canWriteRoster?: boolean;
             canReadPayout?: boolean;
             canWritePayout?: boolean;
+            canReadScoreboard?: boolean;
+            canWriteScoreboard?: boolean;
             canReadConfiguration?: boolean;
             canWriteConfiguration?: boolean;
             canReadArchives?: boolean;
@@ -311,6 +315,9 @@ export async function PATCH(request: NextRequest) {
         const normalizedCanReadRoster = (payload.canReadRoster ?? true) || normalizedCanWriteRoster;
         const normalizedCanWritePayout = payload.canWritePayout ?? true;
         const normalizedCanReadPayout = (payload.canReadPayout ?? true) || normalizedCanWritePayout;
+        const normalizedCanWriteScoreboard = payload.canWriteScoreboard ?? true;
+        const normalizedCanReadScoreboard =
+            (payload.canReadScoreboard ?? true) || normalizedCanWriteScoreboard;
         const normalizedCanWriteConfiguration = payload.canWriteConfiguration ?? true;
         const normalizedCanReadConfiguration =
             (payload.canReadConfiguration ?? true) || normalizedCanWriteConfiguration;
@@ -344,6 +351,8 @@ export async function PATCH(request: NextRequest) {
                 canWriteRoster: normalizedCanWriteRoster,
                 canReadPayout: normalizedCanReadPayout,
                 canWritePayout: normalizedCanWritePayout,
+                canReadScoreboard: normalizedCanReadScoreboard,
+                canWriteScoreboard: normalizedCanWriteScoreboard,
                 canReadConfiguration: normalizedCanReadConfiguration,
                 canWriteConfiguration: normalizedCanWriteConfiguration,
                 canReadArchives: normalizedCanReadArchives,
@@ -356,6 +365,8 @@ export async function PATCH(request: NextRequest) {
                 canWriteRoster: normalizedCanWriteRoster,
                 canReadPayout: normalizedCanReadPayout,
                 canWritePayout: normalizedCanWritePayout,
+                canReadScoreboard: normalizedCanReadScoreboard,
+                canWriteScoreboard: normalizedCanWriteScoreboard,
                 canReadConfiguration: normalizedCanReadConfiguration,
                 canWriteConfiguration: normalizedCanWriteConfiguration,
                 canReadArchives: normalizedCanReadArchives,

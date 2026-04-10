@@ -2,12 +2,13 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-export type GuildAccessScope = "roster" | "payout" | "configuration" | "archives";
+export type GuildAccessScope = "roster" | "payout" | "scoreboard" | "configuration" | "archives";
 export type GuildAccessMode = "read" | "write";
 
 export type GuildScopeReadAccessSummary = {
     roster: boolean;
     payout: boolean;
+    scoreboard: boolean;
     configuration: boolean;
     archives: boolean;
 };
@@ -15,6 +16,7 @@ export type GuildScopeReadAccessSummary = {
 const EMPTY_GUILD_SCOPE_READ_ACCESS: GuildScopeReadAccessSummary = {
     roster: false,
     payout: false,
+    scoreboard: false,
     configuration: false,
     archives: false,
 };
@@ -162,6 +164,8 @@ export async function hasGuildScopeAccess(params: {
             canWriteRoster: true,
             canReadPayout: true,
             canWritePayout: true,
+            canReadScoreboard: true,
+            canWriteScoreboard: true,
             canReadConfiguration: true,
             canWriteConfiguration: true,
             canReadArchives: true,
@@ -179,6 +183,10 @@ export async function hasGuildScopeAccess(params: {
 
     if (params.scope === "payout") {
         return params.mode === "read" ? access.canReadPayout : access.canWritePayout;
+    }
+
+    if (params.scope === "scoreboard") {
+        return params.mode === "read" ? access.canReadScoreboard : access.canWriteScoreboard;
     }
 
     if (params.scope === "archives") {
@@ -200,6 +208,7 @@ export async function getGuildScopeReadAccessSummary(params: {
         return {
             roster: true,
             payout: true,
+            scoreboard: true,
             configuration: true,
             archives: true,
         };
@@ -211,6 +220,7 @@ export async function getGuildScopeReadAccessSummary(params: {
         return {
             roster: true,
             payout: true,
+            scoreboard: true,
             configuration: true,
             archives: true,
         };
@@ -226,6 +236,7 @@ export async function getGuildScopeReadAccessSummary(params: {
         select: {
             canReadRoster: true,
             canReadPayout: true,
+            canReadScoreboard: true,
             canReadConfiguration: true,
             canReadArchives: true,
         },
@@ -238,6 +249,7 @@ export async function getGuildScopeReadAccessSummary(params: {
     return {
         roster: access.canReadRoster,
         payout: access.canReadPayout,
+        scoreboard: access.canReadScoreboard,
         configuration: access.canReadConfiguration,
         archives: access.canReadArchives,
     };

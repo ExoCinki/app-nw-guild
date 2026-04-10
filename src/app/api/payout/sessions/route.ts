@@ -1,96 +1,49 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { publishLiveUpdate } from "@/lib/live-updates";
 import { withApiTiming } from "@/lib/api-timing";
+import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
-    try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+export const GET = apiHandler("GET /api/payout/sessions", async (request: NextRequest) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
 
-        const requestedGuildId = request.nextUrl.searchParams.get("guildId");
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            requestedGuildId,
-            "payout",
-        );
+    const guild = await requireGuildAuth(auth.email, request.nextUrl.searchParams.get("guildId"), "payout");
+    if ("response" in guild) return guild.response;
 
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
-
-        const sessions = await withApiTiming("GET /api/payout/sessions", () =>
-            prisma.payoutSession.findMany({
-                where: { discordGuildId: resolved.guildId },
-                include: {
-                    entries: { orderBy: { displayName: "asc" } },
-                    shares: { select: { shareUrl: true, updatedAt: true } },
-                },
-                orderBy: { createdAt: "desc" },
-            }),
-        );
-
-        return NextResponse.json(sessions);
-    } catch (error) {
-        console.error("GET /api/payout/sessions", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
-    }
-}
-
-export async function POST(request: NextRequest) {
-    try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
-
-        const payload = (await request.json()) as {
-            goldPool?: number;
-            guildId?: string;
-        };
-
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            payload.guildId ?? null,
-            "payout",
-            "write",
-        );
-
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
-
-        const payoutSession = await prisma.payoutSession.create({
-            data: {
-                discordGuildId: resolved.guildId,
-                goldPool: payload.goldPool || 0,
+    const sessions = await withApiTiming("GET /api/payout/sessions", () =>
+        prisma.payoutSession.findMany({
+            where: { discordGuildId: guild.resolved.guildId },
+            include: {
+                entries: { orderBy: { displayName: "asc" } },
+                shares: { select: { shareUrl: true, updatedAt: true } },
             },
-        });
+            orderBy: { createdAt: "desc" },
+        }),
+    );
 
-        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
+    return NextResponse.json(sessions);
+});
 
-        return NextResponse.json(payoutSession, { status: 201 });
-    } catch (error) {
-        console.error("POST /api/payout/sessions", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
-    }
-}
+export const POST = apiHandler("POST /api/payout/sessions", async (request: NextRequest) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
+
+    const payload = (await request.json()) as { goldPool?: number; guildId?: string };
+
+    const guild = await requireGuildAuth(auth.email, payload.guildId, "payout", "write");
+    if ("response" in guild) return guild.response;
+
+    const payoutSession = await prisma.payoutSession.create({
+        data: {
+            discordGuildId: guild.resolved.guildId,
+            goldPool: payload.goldPool || 0,
+        },
+    });
+
+    publishLiveUpdate({ topic: "payout", guildId: guild.resolved.guildId });
+
+    return NextResponse.json(payoutSession, { status: 201 });
+});

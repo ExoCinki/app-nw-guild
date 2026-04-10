@@ -25,6 +25,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
   const [canWriteRoster, setCanWriteRoster] = useState(true);
   const [canReadPayout, setCanReadPayout] = useState(true);
   const [canWritePayout, setCanWritePayout] = useState(true);
+  const [canReadScoreboard, setCanReadScoreboard] = useState(true);
+  const [canWriteScoreboard, setCanWriteScoreboard] = useState(true);
   const [canReadConfiguration, setCanReadConfiguration] = useState(true);
   const [canWriteConfiguration, setCanWriteConfiguration] = useState(true);
   const [canReadArchives, setCanReadArchives] = useState(true);
@@ -50,6 +52,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
     setCanWriteRoster(match?.canWriteRoster ?? true);
     setCanReadPayout(match?.canReadPayout ?? true);
     setCanWritePayout(match?.canWritePayout ?? true);
+    setCanReadScoreboard(match?.canReadScoreboard ?? true);
+    setCanWriteScoreboard(match?.canWriteScoreboard ?? true);
     setCanReadConfiguration(match?.canReadConfiguration ?? true);
     setCanWriteConfiguration(match?.canWriteConfiguration ?? true);
     setCanReadArchives(match?.canReadArchives ?? true);
@@ -81,6 +85,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
               canWriteRoster,
               canReadPayout,
               canWritePayout,
+              canReadScoreboard,
+              canWriteScoreboard,
               canReadConfiguration,
               canWriteConfiguration,
               canReadArchives,
@@ -258,6 +264,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
               setCanWriteRoster(true);
               setCanReadPayout(true);
               setCanWritePayout(true);
+              setCanReadScoreboard(true);
+              setCanWriteScoreboard(true);
               setCanReadConfiguration(true);
               setCanWriteConfiguration(true);
               setCanReadArchives(true);
@@ -274,6 +282,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
               setCanWriteRoster(false);
               setCanReadPayout(true);
               setCanWritePayout(false);
+              setCanReadScoreboard(true);
+              setCanWriteScoreboard(false);
               setCanReadConfiguration(true);
               setCanWriteConfiguration(false);
               setCanReadArchives(true);
@@ -290,6 +300,8 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
               setCanWriteRoster(false);
               setCanReadPayout(false);
               setCanWritePayout(false);
+              setCanReadScoreboard(false);
+              setCanWriteScoreboard(false);
               setCanReadConfiguration(false);
               setCanWriteConfiguration(false);
               setCanReadArchives(false);
@@ -348,6 +360,32 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                 onChange={(e) => {
                   setCanWritePayout(e.target.checked);
                   if (e.target.checked) setCanReadPayout(true);
+                }}
+              />
+              Write
+            </label>
+          </div>
+
+          <div className="rounded border border-slate-700 bg-slate-800/60 p-2">
+            <div className="mb-2 font-medium">Scoreboard</div>
+            <label className="mr-3 inline-flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={canReadScoreboard}
+                onChange={(e) => {
+                  setCanReadScoreboard(e.target.checked);
+                  if (!e.target.checked) setCanWriteScoreboard(false);
+                }}
+              />
+              Read
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={canWriteScoreboard}
+                onChange={(e) => {
+                  setCanWriteScoreboard(e.target.checked);
+                  if (e.target.checked) setCanReadScoreboard(true);
                 }}
               />
               Write
@@ -450,6 +488,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                 <th className="px-3 py-2 text-left">Serveur</th>
                 <th className="px-3 py-2 text-left">Roster</th>
                 <th className="px-3 py-2 text-left">Payout</th>
+                <th className="px-3 py-2 text-left">Scoreboard</th>
                 <th className="px-3 py-2 text-left">Configuration</th>
                 <th className="px-3 py-2 text-left">Archives</th>
                 <th className="px-3 py-2 text-left">Regle explicite</th>
@@ -479,6 +518,12 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                     </td>
                     <td className="px-3 py-2">
                       {formatPerm(row.canReadPayout, row.canWritePayout)}
+                    </td>
+                    <td className="px-3 py-2">
+                      {formatPerm(
+                        row.canReadScoreboard,
+                        row.canWriteScoreboard,
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       {formatPerm(
@@ -522,7 +567,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
               })}
               {accesses.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-3 text-slate-400" colSpan={8}>
+                  <td className="px-3 py-3 text-slate-400" colSpan={9}>
                     Aucune regle explicite enregistree.
                   </td>
                 </tr>

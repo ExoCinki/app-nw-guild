@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 const EMPTY_ACCESS: GuildScopeReadAccessSummary = {
     roster: false,
     payout: false,
+    scoreboard: false,
     configuration: false,
     archives: false,
 };

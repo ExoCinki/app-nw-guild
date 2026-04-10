@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getOwnerSessionStatus } from "@/lib/whitelist-auth";
+import { getOwnerGuardStatus as getOwnerSessionStatus } from "@/lib/admin-access";
+import { apiHandler } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ function ownerGuardResponse(status: "unauthorized" | "forbidden" | "misconfigure
     );
 }
 
-export async function GET() {
+export const GET = apiHandler("GET /api/whitelist", async () => {
     const ownerStatus = await getOwnerSessionStatus();
     if (ownerStatus.status !== "ok") {
         return ownerGuardResponse(ownerStatus.status);
@@ -35,9 +36,9 @@ export async function GET() {
     });
 
     return NextResponse.json({ guilds });
-}
+});
 
-export async function POST(request: NextRequest) {
+export const POST = apiHandler("POST /api/whitelist", async (request: NextRequest) => {
     const ownerStatus = await getOwnerSessionStatus();
     if (ownerStatus.status !== "ok") {
         return ownerGuardResponse(ownerStatus.status);
@@ -74,9 +75,9 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ guild });
-}
+});
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = apiHandler("DELETE /api/whitelist", async (request: NextRequest) => {
     const ownerStatus = await getOwnerSessionStatus();
     if (ownerStatus.status !== "ok") {
         return ownerGuardResponse(ownerStatus.status);
@@ -93,4 +94,4 @@ export async function DELETE(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true });
-}
+});

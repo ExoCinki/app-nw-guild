@@ -670,7 +670,6 @@ export default function PayoutClient() {
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSharedLinkBySession(linkMap);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShareExpiresAtBySession(expiresMap);
   }, [sessions]);
 

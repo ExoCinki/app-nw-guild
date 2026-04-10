@@ -1,190 +1,117 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { publishLiveUpdate } from "@/lib/live-updates";
+import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: NextRequest) {
-    try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+// ─── POST : ajouter un joueur ─────────────────────────────────────────────────
 
-        const payload = (await request.json()) as {
-            sessionId: string;
-            discordUserId: string;
-            username: string;
+export const POST = apiHandler("POST /api/payout/entries", async (request: NextRequest) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
+
+    const payload = (await request.json()) as {
+        sessionId: string;
+        discordUserId: string;
+        username: string;
+        displayName?: string;
+        guildId?: string;
+    };
+
+    const guild = await requireGuildAuth(auth.email, payload.guildId, "payout", "write");
+    if ("response" in guild) return guild.response;
+
+    const targetSession = await prisma.payoutSession.findFirst({
+        where: { id: payload.sessionId, discordGuildId: guild.resolved.guildId },
+        select: { id: true },
+    });
+
+    if (!targetSession) {
+        return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    const entry = await prisma.payoutEntry.create({
+        data: {
+            sessionId: payload.sessionId,
+            discordGuildId: guild.resolved.guildId,
+            discordUserId: payload.discordUserId,
+            username: payload.username,
+            displayName: payload.displayName || payload.username,
+        },
+    });
+
+    publishLiveUpdate({ topic: "payout", guildId: guild.resolved.guildId });
+
+    return NextResponse.json(entry, { status: 201 });
+});
+
+// ─── PATCH : modifier une entrée ─────────────────────────────────────────────
+
+export const PATCH = apiHandler("PATCH /api/payout/entries", async (request: NextRequest) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
+
+    const payload = (await request.json()) as {
+        entryId: string;
+        updates?: {
+            wars?: number;
+            races?: number;
+            reviews?: number;
+            bonus?: number;
+            invasions?: number;
+            vods?: number;
+            isPaid?: boolean;
             displayName?: string;
-            guildId?: string;
         };
+        guildId?: string;
+    };
 
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            payload.guildId ?? null,
-            "payout",
-            "write",
-        );
+    const guild = await requireGuildAuth(auth.email, payload.guildId, "payout", "write");
+    if ("response" in guild) return guild.response;
 
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
+    const targetEntry = await prisma.payoutEntry.findFirst({
+        where: { id: payload.entryId, discordGuildId: guild.resolved.guildId },
+        select: { id: true },
+    });
 
-        const targetSession = await prisma.payoutSession.findFirst({
-            where: {
-                id: payload.sessionId,
-                discordGuildId: resolved.guildId,
-            },
-            select: { id: true },
-        });
-
-        if (!targetSession) {
-            return NextResponse.json({ error: "Session not found" }, { status: 404 });
-        }
-
-        const entry = await prisma.payoutEntry.create({
-            data: {
-                sessionId: payload.sessionId,
-                discordGuildId: resolved.guildId,
-                discordUserId: payload.discordUserId,
-                username: payload.username,
-                displayName: payload.displayName || payload.username,
-            },
-        });
-
-        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
-
-        return NextResponse.json(entry, { status: 201 });
-    } catch (error) {
-        console.error("POST /api/payout/entries", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
+    if (!targetEntry) {
+        return NextResponse.json({ error: "Entry not found" }, { status: 404 });
     }
-}
 
-export async function PATCH(request: NextRequest) {
-    try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+    const entry = await prisma.payoutEntry.update({
+        where: { id: payload.entryId },
+        data: payload.updates || {},
+    });
 
-        const payload = (await request.json()) as {
-            entryId: string;
-            updates?: {
-                wars?: number;
-                races?: number;
-                reviews?: number;
-                bonus?: number;
-                invasions?: number;
-                vods?: number;
-                isPaid?: boolean;
-                displayName?: string;
-            };
-            guildId?: string;
-        };
+    publishLiveUpdate({ topic: "payout", guildId: guild.resolved.guildId });
 
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            payload.guildId ?? null,
-            "payout",
-            "write",
-        );
+    return NextResponse.json(entry);
+});
 
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
+// ─── DELETE : supprimer une entrée ───────────────────────────────────────────
 
-        const targetEntry = await prisma.payoutEntry.findFirst({
-            where: {
-                id: payload.entryId,
-                discordGuildId: resolved.guildId,
-            },
-            select: { id: true },
-        });
+export const DELETE = apiHandler("DELETE /api/payout/entries", async (request: NextRequest) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
 
-        if (!targetEntry) {
-            return NextResponse.json({ error: "Entry not found" }, { status: 404 });
-        }
+    const payload = (await request.json()) as { entryId: string; guildId?: string };
 
-        const entry = await prisma.payoutEntry.update({
-            where: { id: payload.entryId },
-            data: payload.updates || {},
-        });
+    const guild = await requireGuildAuth(auth.email, payload.guildId, "payout", "write");
+    if ("response" in guild) return guild.response;
 
-        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
+    const targetEntry = await prisma.payoutEntry.findFirst({
+        where: { id: payload.entryId, discordGuildId: guild.resolved.guildId },
+        select: { id: true },
+    });
 
-        return NextResponse.json(entry);
-    } catch (error) {
-        console.error("PATCH /api/payout/entries", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
+    if (!targetEntry) {
+        return NextResponse.json({ error: "Entry not found" }, { status: 404 });
     }
-}
 
-export async function DELETE(request: NextRequest) {
-    try {
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+    await prisma.payoutEntry.delete({ where: { id: payload.entryId } });
 
-        const payload = (await request.json()) as {
-            entryId: string;
-            guildId?: string;
-        };
+    publishLiveUpdate({ topic: "payout", guildId: guild.resolved.guildId });
 
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            payload.guildId ?? null,
-            "payout",
-            "write",
-        );
-
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
-
-        const targetEntry = await prisma.payoutEntry.findFirst({
-            where: {
-                id: payload.entryId,
-                discordGuildId: resolved.guildId,
-            },
-            select: { id: true },
-        });
-
-        if (!targetEntry) {
-            return NextResponse.json({ error: "Entry not found" }, { status: 404 });
-        }
-
-        await prisma.payoutEntry.delete({
-            where: { id: payload.entryId },
-        });
-
-        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
-
-        return NextResponse.json({ success: true });
-    } catch (error) {
-        console.error("DELETE /api/payout/entries", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
-    }
-}
+    return NextResponse.json({ success: true });
+});

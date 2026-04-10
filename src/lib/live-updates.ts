@@ -1,4 +1,4 @@
-type LiveUpdateTopic = "roster" | "payout";
+type LiveUpdateTopic = "roster" | "payout" | "scoreboard";
 
 type LiveUpdateEvent = {
     id: number;
@@ -122,7 +122,9 @@ export async function ensureLiveUpdatesReady() {
 
                     if (
                         typeof envelope.id !== "number" ||
-                        (envelope.topic !== "roster" && envelope.topic !== "payout") ||
+                        (envelope.topic !== "roster" &&
+                            envelope.topic !== "payout" &&
+                            envelope.topic !== "scoreboard") ||
                         typeof envelope.guildId !== "string" ||
                         typeof envelope.timestamp !== "number"
                     ) {

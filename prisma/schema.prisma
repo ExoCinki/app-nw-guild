@@ -200,6 +200,38 @@ model PayoutEntry {
   @@index([discordGuildId])
 }
 
+model ScoreboardSession {
+  id             String            @id @default(cuid())
+  discordGuildId String
+  name           String?
+  status         String            @default("DRAFT")
+  entries        ScoreboardEntry[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([discordGuildId, createdAt(sort: Desc)])
+}
+
+model ScoreboardEntry {
+  id                String            @id @default(cuid())
+  sessionId         String
+  discordGuildId    String
+  playerName        String
+  playerNameKey     String
+  kills             Int               @default(0)
+  deaths            Int               @default(0)
+  assists           Int               @default(0)
+  damageDealt       Int               @default(0)
+  healingDone       Int               @default(0)
+  session           ScoreboardSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([sessionId, playerNameKey])
+  @@index([discordGuildId, playerNameKey])
+  @@index([sessionId])
+}
+
 model GuildUserAccess {
   id                     String   @id @default(cuid())
   userId                 String
@@ -208,6 +240,8 @@ model GuildUserAccess {
   canWriteRoster         Boolean  @default(true)
   canReadPayout          Boolean  @default(true)
   canWritePayout         Boolean  @default(true)
+  canReadScoreboard      Boolean  @default(true)
+  canWriteScoreboard     Boolean  @default(true)
   canReadConfiguration   Boolean  @default(true)
   canWriteConfiguration  Boolean  @default(true)
   canReadArchives        Boolean  @default(true)

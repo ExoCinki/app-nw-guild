@@ -273,6 +273,7 @@ export async function getManagedWhitelistedGuilds(
                 discordGuildId: true,
                 canReadRoster: true,
                 canReadPayout: true,
+                canReadScoreboard: true,
                 canReadConfiguration: true,
             },
         })
@@ -288,6 +289,7 @@ export async function getManagedWhitelistedGuilds(
                 (item) =>
                     item.canReadRoster ||
                     item.canReadPayout ||
+                    item.canReadScoreboard ||
                     item.canReadConfiguration,
             )
             .map((item) => item.discordGuildId),
@@ -309,6 +311,7 @@ export async function getManagedWhitelistedGuilds(
                 return (
                     override.canReadRoster ||
                     override.canReadPayout ||
+                    override.canReadScoreboard ||
                     override.canReadConfiguration
                 );
             }

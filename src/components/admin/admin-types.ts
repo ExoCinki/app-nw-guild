@@ -25,6 +25,8 @@ export type AdminAccess = {
     canWriteRoster: boolean;
     canReadPayout: boolean;
     canWritePayout: boolean;
+    canReadScoreboard: boolean;
+    canWriteScoreboard: boolean;
     canReadConfiguration: boolean;
     canWriteConfiguration: boolean;
     canReadArchives: boolean;

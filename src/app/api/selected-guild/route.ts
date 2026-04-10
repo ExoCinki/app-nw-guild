@@ -1,20 +1,16 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
+import { apiHandler, requireAuth } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.email) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const GET = apiHandler("GET /api/selected-guild", async () => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
 
     const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
+        where: { email: auth.email },
         select: { id: true },
     });
 
@@ -68,7 +64,7 @@ export async function GET() {
 
     // Async update Discord data in background (non-blocking)
     // This ensures the user gets a fast response while data is kept fresh
-    getManagedWhitelistedGuilds(session.user.email)
+    getManagedWhitelistedGuilds(auth.email)
         .then((manageableGuildsResult) => {
             if (manageableGuildsResult.ok) {
                 const selectedGuild = manageableGuildsResult.guilds.find(
@@ -99,14 +95,11 @@ export async function GET() {
         });
 
     return response;
-}
+});
 
-export async function POST(request: Request) {
-    const session = await getServerSession(authOptions);
-
-    if (!session?.user?.email) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const POST = apiHandler("POST /api/selected-guild", async (request: Request) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
 
     const { guildId } = (await request.json()) as { guildId: string };
 
@@ -118,7 +111,7 @@ export async function POST(request: Request) {
     }
 
     const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
+        where: { email: auth.email },
         select: { id: true },
     });
 
@@ -126,7 +119,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const manageableGuildsResult = await getManagedWhitelistedGuilds(session.user.email);
+    const manageableGuildsResult = await getManagedWhitelistedGuilds(auth.email);
 
     if (!manageableGuildsResult.ok) {
         return NextResponse.json(
@@ -164,4 +157,4 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ selectedGuildId: selected.discordGuildId });
-}
+});

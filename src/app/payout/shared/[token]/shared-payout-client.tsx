@@ -282,11 +282,6 @@ export default function SharedPayoutClient({ token }: { token: string }) {
                   "en-US",
                 )}
               </p>
-              {data.accessRole.name || data.accessRole.id ? (
-                <p className="mt-3 text-xs text-slate-300">
-                  Required role: {data.accessRole.name || data.accessRole.id}
-                </p>
-              ) : null}
             </div>
             <div className="w-full max-w-md">
               <input

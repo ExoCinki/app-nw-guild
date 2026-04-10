@@ -1,41 +1,29 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { resolveManagedGuildForUser } from "@/lib/managed-guild-access";
 import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { publishLiveUpdate } from "@/lib/live-updates";
 import { withApiTiming } from "@/lib/api-timing";
+import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
-) {
-    try {
+type RouteParams = { params: Promise<{ id: string }> };
+
+// ─── GET ──────────────────────────────────────────────────────────────────────
+
+export const GET = apiHandler(
+    "GET /api/payout/sessions/[id]",
+    async (request: NextRequest, { params }: RouteParams) => {
         const { id } = await params;
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
 
-        const requestedGuildId = request.nextUrl.searchParams.get("guildId");
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            requestedGuildId,
-            "payout",
-        );
+        const auth = await requireAuth();
+        if ("response" in auth) return auth.response;
 
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
+        const guild = await requireGuildAuth(auth.email, request.nextUrl.searchParams.get("guildId"), "payout");
+        if ("response" in guild) return guild.response;
 
         const payoutSession = await withApiTiming("GET /api/payout/sessions/[id]", () =>
             prisma.payoutSession.findFirst({
-                where: { id, discordGuildId: resolved.guildId },
+                where: { id, discordGuildId: guild.resolved.guildId },
                 include: { entries: { orderBy: { displayName: "asc" } } },
             }),
         );
@@ -45,25 +33,18 @@ export async function GET(
         }
 
         return NextResponse.json(payoutSession);
-    } catch (error) {
-        console.error("GET /api/payout/sessions/[id]", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
-    }
-}
+    },
+);
 
-export async function PATCH(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
-) {
-    try {
+// ─── PATCH ────────────────────────────────────────────────────────────────────
+
+export const PATCH = apiHandler(
+    "PATCH /api/payout/sessions/[id]",
+    async (request: NextRequest, { params }: RouteParams) => {
         const { id } = await params;
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+
+        const auth = await requireAuth();
+        if ("response" in auth) return auth.response;
 
         const payload = (await request.json()) as {
             goldPool?: number;
@@ -73,22 +54,11 @@ export async function PATCH(
             guildId?: string;
         };
 
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            payload.guildId ?? null,
-            "payout",
-            "write",
-        );
-
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
+        const guild = await requireGuildAuth(auth.email, payload.guildId, "payout", "write");
+        if ("response" in guild) return guild.response;
 
         const dbUser = await prisma.user.findUnique({
-            where: { email: session.user.email },
+            where: { email: auth.email },
             select: { id: true },
         });
 
@@ -97,7 +67,7 @@ export async function PATCH(
         }
 
         const targetSession = await prisma.payoutSession.findFirst({
-            where: { id, discordGuildId: resolved.guildId },
+            where: { id, discordGuildId: guild.resolved.guildId },
             select: { id: true, isLocked: true, lockedByUserId: true },
         });
 
@@ -105,7 +75,11 @@ export async function PATCH(
             return NextResponse.json({ error: "Not found" }, { status: 404 });
         }
 
-        if (payload.isLocked === false && targetSession.isLocked && targetSession.lockedByUserId !== dbUser.id) {
+        if (
+            payload.isLocked === false &&
+            targetSession.isLocked &&
+            targetSession.lockedByUserId !== dbUser.id
+        ) {
             return NextResponse.json(
                 { error: "Only the user who locked this session can unlock it" },
                 { status: 403 },
@@ -128,46 +102,27 @@ export async function PATCH(
             }),
         );
 
-        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
+        publishLiveUpdate({ topic: "payout", guildId: guild.resolved.guildId });
 
         return NextResponse.json(payoutSession);
-    } catch (error) {
-        console.error("PATCH /api/payout/sessions/[id]", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
-    }
-}
+    },
+);
 
-export async function DELETE(
-    request: NextRequest,
-    { params }: { params: Promise<{ id: string }> }
-) {
-    try {
+// ─── DELETE ───────────────────────────────────────────────────────────────────
+
+export const DELETE = apiHandler(
+    "DELETE /api/payout/sessions/[id]",
+    async (request: NextRequest, { params }: RouteParams) => {
         const { id } = await params;
-        const session = await getServerSession(authOptions);
-        if (!session?.user?.email) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
 
-        const requestedGuildId = request.nextUrl.searchParams.get("guildId");
-        const resolved = await resolveManagedGuildForUser(
-            session.user.email,
-            requestedGuildId,
-            "payout",
-            "write",
-        );
+        const auth = await requireAuth();
+        if ("response" in auth) return auth.response;
 
-        if ("error" in resolved) {
-            return NextResponse.json(
-                { error: resolved.error },
-                { status: resolved.status },
-            );
-        }
+        const guild = await requireGuildAuth(auth.email, request.nextUrl.searchParams.get("guildId"), "payout", "write");
+        if ("response" in guild) return guild.response;
 
         const targetSession = await prisma.payoutSession.findFirst({
-            where: { id, discordGuildId: resolved.guildId },
+            where: { id, discordGuildId: guild.resolved.guildId },
             select: { id: true, isLocked: true },
         });
 
@@ -182,18 +137,10 @@ export async function DELETE(
             );
         }
 
-        await prisma.payoutSession.delete({
-            where: { id },
-        });
+        await prisma.payoutSession.delete({ where: { id } });
 
-        publishLiveUpdate({ topic: "payout", guildId: resolved.guildId });
+        publishLiveUpdate({ topic: "payout", guildId: guild.resolved.guildId });
 
         return NextResponse.json({ success: true });
-    } catch (error) {
-        console.error("DELETE /api/payout/sessions/[id]", error);
-        return NextResponse.json(
-            { error: "Internal server error" },
-            { status: 500 }
-        );
-    }
-}
+    },
+);

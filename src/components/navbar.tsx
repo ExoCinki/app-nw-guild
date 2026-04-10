@@ -30,6 +30,7 @@ type MeResponse = {
   access: {
     roster: boolean;
     payout: boolean;
+    scoreboard: boolean;
     configuration: boolean;
     archives: boolean;
   };
@@ -81,6 +82,7 @@ export function Navbar() {
   const access = meQuery.data?.access;
   const canAccessRoster = Boolean(access?.roster);
   const canAccessPayout = Boolean(access?.payout);
+  const canAccessScoreboard = Boolean(access?.scoreboard);
   const canAccessArchives = Boolean(access?.archives);
   const canAccessConfiguration = Boolean(access?.configuration);
   const canShowSelectedGuild = Boolean(meQuery.data?.hasSelectedGuildAccess);
@@ -112,6 +114,12 @@ export function Navbar() {
             >
               Home
             </Link>
+            <Link
+              href="/scoreboard/public"
+              className={`text-sm font-medium transition ${isActive("/scoreboard/public")}`}
+            >
+              Scoreboard Public
+            </Link>
             {session?.user && canAccessRoster ? (
               <Link
                 href="/roster"
@@ -126,6 +134,14 @@ export function Navbar() {
                 className={`text-sm font-medium transition ${isActive("/payout")}`}
               >
                 Payout
+              </Link>
+            ) : null}
+            {session?.user && canAccessScoreboard ? (
+              <Link
+                href="/scoreboard"
+                className={`text-sm font-medium transition ${isActive("/scoreboard")}`}
+              >
+                Scoreboard
               </Link>
             ) : null}
             {session?.user && canAccessArchives ? (
