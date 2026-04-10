@@ -32,7 +32,10 @@ export async function GET(request: NextRequest) {
         const sessions = await withApiTiming("GET /api/payout/sessions", () =>
             prisma.payoutSession.findMany({
                 where: { discordGuildId: resolved.guildId },
-                include: { entries: { orderBy: { displayName: "asc" } } },
+                include: {
+                    entries: { orderBy: { displayName: "asc" } },
+                    shares: { select: { shareUrl: true, updatedAt: true } },
+                },
                 orderBy: { createdAt: "desc" },
             }),
         );

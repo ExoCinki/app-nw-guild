@@ -169,6 +169,7 @@ model PayoutSessionShare {
   sessionId      String        @unique
   discordGuildId String
   shareTokenHash String        @unique
+  shareUrl       String?       @db.Text
   createdByUserId String?
   session        PayoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   createdAt      DateTime      @default(now())

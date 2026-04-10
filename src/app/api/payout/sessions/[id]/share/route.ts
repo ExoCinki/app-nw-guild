@@ -64,16 +64,20 @@ export async function POST(
         const shareToken = createShareToken();
         const shareTokenHash = hashShareToken(shareToken);
 
+        const shareUrl = `${request.nextUrl.origin}/payout/shared/${shareToken}`;
+
         const share = await prisma.payoutSessionShare.upsert({
             where: { sessionId: payoutSession.id },
             update: {
                 shareTokenHash,
+                shareUrl,
                 createdByUserId: resolved.userId,
             },
             create: {
                 sessionId: payoutSession.id,
                 discordGuildId: resolved.guildId,
                 shareTokenHash,
+                shareUrl,
                 createdByUserId: resolved.userId,
             },
             select: {
@@ -83,7 +87,7 @@ export async function POST(
         });
 
         return NextResponse.json({
-            shareUrl: `${request.nextUrl.origin}/payout/shared/${shareToken}`,
+            shareUrl,
             createdAt: share.createdAt,
             updatedAt: share.updatedAt,
             expiresAt: new Date(

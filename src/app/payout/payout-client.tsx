@@ -22,6 +22,11 @@ import { LoadingButton } from "@/components/loading-button";
 import { LoadingIndicator } from "@/components/loading-indicator";
 import { queryPresets } from "@/lib/query-presets";
 
+interface PayoutSessionShare {
+  shareUrl: string | null;
+  updatedAt: string;
+}
+
 interface PayoutSession {
   id: string;
   discordGuildId: string;
@@ -31,6 +36,7 @@ interface PayoutSession {
   isLocked: boolean;
   lockedByUserId: string | null;
   entries: PayoutEntry[];
+  shares: PayoutSessionShare[];
   createdAt: string;
   updatedAt: string;
 }
@@ -649,6 +655,25 @@ export default function PayoutClient() {
     setCurrentPlayersPage(1);
   }, [selectedSessionId]);
 
+  // Initialize share link maps from sessions data on load/refresh
+  useEffect(() => {
+    const linkMap: Record<string, string> = {};
+    const expiresMap: Record<string, string> = {};
+    for (const session of sessions) {
+      const share = session.shares?.[0];
+      if (share?.shareUrl) {
+        linkMap[session.id] = share.shareUrl;
+        expiresMap[session.id] = new Date(
+          new Date(share.updatedAt).getTime() + 30 * 24 * 60 * 60 * 1000,
+        ).toISOString();
+      }
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSharedLinkBySession(linkMap);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShareExpiresAtBySession(expiresMap);
+  }, [sessions]);
+
   // Calculate totals
   const calculations = useMemo(() => {
     if (!selectedSession || !guildConfig) return null;
@@ -848,7 +873,7 @@ export default function PayoutClient() {
                               ))}
                           </div>
                           <div className="text-lg font-semibold">
-                            {session.goldPool.toFixed(0)} or
+                            {session.goldPool.toFixed(0)}
                           </div>
                           <div className="text-xs text-slate-400">
                             {session.entries.length} players
@@ -1089,7 +1114,7 @@ export default function PayoutClient() {
               <div>
                 <div className="text-sm text-slate-400">Gold total</div>
                 <div className="text-2xl font-bold text-yellow-400">
-                  {selectedSession.goldPool.toFixed(0)} or
+                  {selectedSession.goldPool.toFixed(0)}
                 </div>
               </div>
               <div>
