@@ -48,30 +48,32 @@ async function getCurrentAdminIdentity() {
 
     let effectiveDiscordId = dbUser.discordId;
 
-    if (!effectiveDiscordId) {
-        const discordAccount = await prisma.account.findFirst({
-            where: {
-                userId: dbUser.id,
-                provider: "discord",
-            },
-            select: {
-                providerAccountId: true,
+    const [globalAdmin, discordAccount] = await Promise.all([
+        isGlobalAdmin(dbUser.id),
+        !effectiveDiscordId
+            ? prisma.account.findFirst({
+                where: {
+                    userId: dbUser.id,
+                    provider: "discord",
+                },
+                select: {
+                    providerAccountId: true,
+                },
+            })
+            : Promise.resolve(null),
+    ]);
+
+    if (!effectiveDiscordId && discordAccount?.providerAccountId) {
+        effectiveDiscordId = discordAccount.providerAccountId;
+
+        await prisma.user.update({
+            where: { id: dbUser.id },
+            data: {
+                discordId: effectiveDiscordId,
             },
         });
-
-        if (discordAccount?.providerAccountId) {
-            effectiveDiscordId = discordAccount.providerAccountId;
-
-            await prisma.user.update({
-                where: { id: dbUser.id },
-                data: {
-                    discordId: effectiveDiscordId,
-                },
-            });
-        }
     }
 
-    const globalAdmin = await isGlobalAdmin(dbUser.id);
     const isOwner = Boolean(
         ownerDiscordId && effectiveDiscordId && effectiveDiscordId === ownerDiscordId,
     );

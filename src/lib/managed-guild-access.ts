@@ -17,7 +17,7 @@ export async function resolveManagedGuildForUser(
 > {
     const user = await prisma.user.findUnique({
         where: { email },
-        select: { id: true },
+        select: { id: true, discordId: true },
     });
 
     if (!user) {
@@ -55,15 +55,10 @@ export async function resolveManagedGuildForUser(
 
     if (scope) {
         const ownerDiscordId = process.env.OWNER_DISCORD_ID;
-        const userIdentity = await prisma.user.findUnique({
-            where: { id: user.id },
-            select: { discordId: true },
-        });
-
         const isOwner = Boolean(
             ownerDiscordId &&
-            userIdentity?.discordId &&
-            userIdentity.discordId === ownerDiscordId,
+            user.discordId &&
+            user.discordId === ownerDiscordId,
         );
 
         const hasScopedAccess = await hasGuildScopeAccess({

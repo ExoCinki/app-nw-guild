@@ -1,7 +1,6 @@
-import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { apiHandler, requireAuth } from "@/lib/route-guard";
+import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +21,8 @@ const userSearchCache: Map<
 const preferredBotTokenByGuild = new Map<string, string>();
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_MAX_ENTRIES = 500;
+const DISCORD_FETCH_TIMEOUT_MS = 7_000;
 
 type DiscordMember = {
     roles?: string[];
@@ -32,6 +33,48 @@ type DiscordMember = {
         avatar: string | null;
     };
 };
+
+function parseRetryAfterSeconds(value: string | null): number | null {
+    if (!value) {
+        return null;
+    }
+
+    const asNumber = Number.parseFloat(value);
+    if (!Number.isFinite(asNumber) || asNumber <= 0) {
+        return null;
+    }
+
+    return Math.ceil(asNumber);
+}
+
+function pruneUserSearchCache() {
+    if (userSearchCache.size <= CACHE_MAX_ENTRIES) {
+        return;
+    }
+
+    const now = Date.now();
+    for (const [key, value] of userSearchCache.entries()) {
+        if (now - value.timestamp >= CACHE_TTL) {
+            userSearchCache.delete(key);
+        }
+    }
+
+    if (userSearchCache.size <= CACHE_MAX_ENTRIES) {
+        return;
+    }
+
+    const entries = Array.from(userSearchCache.entries()).sort(
+        (a, b) => a[1].timestamp - b[1].timestamp,
+    );
+    const overflow = userSearchCache.size - CACHE_MAX_ENTRIES;
+
+    for (let i = 0; i < overflow; i += 1) {
+        const key = entries[i]?.[0];
+        if (key) {
+            userSearchCache.delete(key);
+        }
+    }
+}
 
 function getDiscordBotTokens(): string[] {
     const multi = (process.env.DISCORD_BOT_TOKENS ?? "")
@@ -47,27 +90,22 @@ export const GET = apiHandler("GET /api/discord/users/search", async (request: N
     const auth = await requireAuth();
     if ("response" in auth) return auth.response;
 
-    const guildsResult = await getManagedWhitelistedGuilds(auth.email);
-    if (!guildsResult.ok) {
-        return NextResponse.json(
-            { error: guildsResult.error },
-            { status: guildsResult.status },
-        );
-    }
-
-    const guilds = guildsResult.guilds;
-    if (guilds.length === 0) {
-        return NextResponse.json({ error: "No managed guilds" }, { status: 403 });
-    }
-
     const searchParams = request.nextUrl.searchParams;
-    const query = searchParams.get("q")?.toLowerCase() || "";
+    const query = searchParams.get("q")?.trim().toLowerCase() || "";
 
     if (query.length < 2) {
         return NextResponse.json([]);
     }
 
-    const guildId = guilds[0].id;
+    const guild = await requireGuildAuth(
+        auth.email,
+        searchParams.get("guildId"),
+        "payout",
+        "read",
+    );
+    if ("response" in guild) return guild.response;
+
+    const guildId = guild.resolved.guildId;
 
     // Get guild config to check for Zoo member role
     const guildConfig = await prisma.guildConfiguration.findUnique({
@@ -103,9 +141,14 @@ export const GET = apiHandler("GET /api/discord/users/search", async (request: N
         avatar: string | null;
     }> = [];
     let success = false;
+    let sawRateLimit = false;
+    let retryAfterSeconds: number | null = null;
+    let sawTransientFailure = false;
 
     for (const botToken of orderedTokens) {
         let members: DiscordMember[] = [];
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), DISCORD_FETCH_TIMEOUT_MS);
 
         try {
             // Always use Discord native search first
@@ -115,14 +158,30 @@ export const GET = apiHandler("GET /api/discord/users/search", async (request: N
                     headers: {
                         Authorization: `Bot ${botToken}`,
                     },
+                    signal: controller.signal,
+                    cache: "no-store",
                 }
             );
+            clearTimeout(timeout);
+
+            if (membersRes.status === 429) {
+                sawRateLimit = true;
+                const parsedRetry = parseRetryAfterSeconds(
+                    membersRes.headers.get("retry-after"),
+                );
+                if (parsedRetry !== null) {
+                    retryAfterSeconds =
+                        retryAfterSeconds === null
+                            ? parsedRetry
+                            : Math.max(retryAfterSeconds, parsedRetry);
+                }
+                continue;
+            }
 
             if (!membersRes.ok) {
-                console.error(
-                    `Discord API error with token ${botToken.slice(0, 10)}...:`,
-                    membersRes.status
-                );
+                if (membersRes.status >= 500) {
+                    sawTransientFailure = true;
+                }
                 continue;
             }
 
@@ -134,8 +193,9 @@ export const GET = apiHandler("GET /api/discord/users/search", async (request: N
                     m.roles && m.roles.includes(zooRoleId)
                 );
             }
-        } catch (err) {
-            console.error(`Error searching members:`, err);
+        } catch {
+            clearTimeout(timeout);
+            sawTransientFailure = true;
             continue;
         }
 
@@ -156,9 +216,23 @@ export const GET = apiHandler("GET /api/discord/users/search", async (request: N
     }
 
     if (!success) {
-        console.error("All Discord bot tokens failed for guild:", guildId);
+        if (sawRateLimit || sawTransientFailure) {
+            const headers = new Headers();
+            if (retryAfterSeconds !== null) {
+                headers.set("Retry-After", String(retryAfterSeconds));
+            }
+
+            return NextResponse.json(
+                { error: "Discord API temporarily unavailable" },
+                { status: 503, headers },
+            );
+        }
+
         return NextResponse.json([]);
     }
+
+    pruneUserSearchCache();
+
     // Cache results
     userSearchCache.set(cacheKey, {
         results,

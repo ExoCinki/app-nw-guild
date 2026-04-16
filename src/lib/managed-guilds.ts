@@ -68,27 +68,55 @@ type DiscordGuild = {
 type DiscordGuildsFetchResult = {
     guilds: DiscordGuild[] | null;
     status: number;
+    retryAfterSeconds: number | null;
 };
 
+const DISCORD_FETCH_TIMEOUT_MS = 7_000;
+
+function parseRetryAfterSeconds(value: string | null): number | null {
+    if (!value) {
+        return null;
+    }
+
+    const asNumber = Number.parseFloat(value);
+    if (!Number.isFinite(asNumber) || asNumber <= 0) {
+        return null;
+    }
+
+    return Math.ceil(asNumber);
+}
+
 async function fetchDiscordGuilds(accessToken: string): Promise<DiscordGuildsFetchResult> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DISCORD_FETCH_TIMEOUT_MS);
+
     try {
         const discordRes = await fetch("https://discord.com/api/v10/users/@me/guilds", {
             headers: {
                 Authorization: `Bearer ${accessToken}`,
             },
             cache: "no-store",
+            signal: controller.signal,
         });
 
+        clearTimeout(timeout);
+
         if (!discordRes.ok) {
-            return { guilds: null, status: discordRes.status };
+            return {
+                guilds: null,
+                status: discordRes.status,
+                retryAfterSeconds: parseRetryAfterSeconds(discordRes.headers.get("retry-after")),
+            };
         }
 
         return {
             guilds: (await discordRes.json()) as DiscordGuild[],
             status: discordRes.status,
+            retryAfterSeconds: null,
         };
     } catch {
-        return { guilds: null, status: 0 };
+        clearTimeout(timeout);
+        return { guilds: null, status: 0, retryAfterSeconds: null };
     }
 }
 
@@ -202,11 +230,13 @@ export async function getManagedWhitelistedGuilds(
 
     let guilds: DiscordGuild[] | null = null;
     let discordStatus: number | null = null;
+    let discordRetryAfterSeconds: number | null = null;
 
     if (account.access_token) {
         const fetched = await fetchDiscordGuilds(account.access_token);
         guilds = fetched.guilds;
         discordStatus = fetched.status;
+        discordRetryAfterSeconds = fetched.retryAfterSeconds;
     }
 
     // Si le token est absent/expire, tente un refresh OAuth puis reessaie.
@@ -226,6 +256,7 @@ export async function getManagedWhitelistedGuilds(
             const fetched = await fetchDiscordGuilds(refreshed.accessToken);
             guilds = fetched.guilds;
             discordStatus = fetched.status;
+            discordRetryAfterSeconds = fetched.retryAfterSeconds;
         }
     }
 
@@ -238,7 +269,10 @@ export async function getManagedWhitelistedGuilds(
             return {
                 ok: false,
                 status: 503,
-                error: "Discord API unavailable or rate limited, retry in a few seconds",
+                error:
+                    discordStatus === 429 && discordRetryAfterSeconds
+                        ? `Discord API rate limited, retry in about ${discordRetryAfterSeconds} seconds`
+                        : "Discord API unavailable or rate limited, retry in a few seconds",
             };
         }
 

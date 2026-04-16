@@ -39,12 +39,13 @@ export async function getCurrentUserAccessState() {
         return { status: "not-found" as const };
     }
 
-    const selectedGuild = await prisma.selectedGuild.findUnique({
-        where: { userId: user.id },
-        select: { discordGuildId: true },
-    });
-
-    const globalAdmin = await isGlobalAdmin(user.id);
+    const [selectedGuild, globalAdmin] = await Promise.all([
+        prisma.selectedGuild.findUnique({
+            where: { userId: user.id },
+            select: { discordGuildId: true },
+        }),
+        isGlobalAdmin(user.id),
+    ]);
     const ownerDiscordId = process.env.OWNER_DISCORD_ID;
     const owner = Boolean(
         ownerDiscordId && user.discordId && user.discordId === ownerDiscordId,

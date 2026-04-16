@@ -2,26 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAdminGuardStatus } from "@/lib/admin-access";
 import { withApiTiming } from "@/lib/api-timing";
+import { getDiscordGuildRoles } from "@/lib/discord-guild-roles";
 
 export const dynamic = "force-dynamic";
-
-type DiscordRole = {
-    id: string;
-    name: string;
-    position: number;
-};
-
-const preferredBotTokenByGuild = new Map<string, string>();
-
-function getDiscordBotTokens(): string[] {
-    const multi = (process.env.DISCORD_BOT_TOKENS ?? "")
-        .split(",")
-        .map((token) => token.trim())
-        .filter(Boolean);
-    const single = (process.env.DISCORD_BOT_TOKEN ?? "").trim();
-
-    return [...new Set([...multi, ...(single ? [single] : [])])];
-}
 
 function ownerGuardResponse(status: "unauthorized" | "forbidden" | "misconfigured") {
     if (status === "unauthorized") {
@@ -44,86 +27,6 @@ function parseNonNegativeInt(value: unknown, fieldName: string): number {
     }
 
     return value;
-}
-
-async function getDiscordGuildRoles(guildId: string): Promise<{
-    roles: DiscordRole[];
-    rolesError: string | null;
-}> {
-    const tokens = getDiscordBotTokens();
-
-    if (tokens.length === 0) {
-        return {
-            roles: [],
-            rolesError: "DISCORD_BOT_TOKEN ou DISCORD_BOT_TOKENS manquant pour charger les roles.",
-        };
-    }
-
-    const preferred = preferredBotTokenByGuild.get(guildId);
-    const orderedTokens = preferred
-        ? [preferred, ...tokens.filter((token) => token !== preferred)]
-        : tokens;
-
-    let lastStatus: number | null = null;
-
-    for (const botToken of orderedTokens) {
-        const response = await fetch(
-            `https://discord.com/api/v10/guilds/${guildId}/roles`,
-            {
-                headers: {
-                    Authorization: `Bot ${botToken}`,
-                },
-                cache: "no-store",
-            },
-        );
-
-        lastStatus = response.status;
-
-        if (!response.ok) {
-            continue;
-        }
-
-        preferredBotTokenByGuild.set(guildId, botToken);
-
-        const roles = (await response.json()) as Array<{
-            id: string;
-            name: string;
-            position: number;
-            managed?: boolean;
-            tags?: {
-                bot_id?: string;
-                integration_id?: string;
-            };
-        }>;
-
-        const filtered = roles
-            .filter((role) => role.id !== guildId)
-            .filter(
-                (role) =>
-                    !role.managed &&
-                    !role.tags?.bot_id &&
-                    !role.tags?.integration_id,
-            )
-            .sort((a, b) => b.position - a.position)
-            .map((role) => ({
-                id: role.id,
-                name: role.name,
-                position: role.position,
-            }));
-
-        return {
-            roles: filtered,
-            rolesError: null,
-        };
-    }
-
-    return {
-        roles: [],
-        rolesError:
-            lastStatus !== null
-                ? `Unable to load Discord roles for this server (status ${lastStatus}).`
-                : "Unable to load Discord roles for this server.",
-    };
 }
 
 async function ensureWhitelistedGuild(guildId: string) {

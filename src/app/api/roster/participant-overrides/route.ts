@@ -4,11 +4,14 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { hasGuildScopeAccess } from "@/lib/admin-access";
-import { publishLiveUpdate } from "@/lib/live-updates";
 
 export const dynamic = "force-dynamic";
 
-async function resolveGuild(email: string, guildIdFromQuery: string | null) {
+async function resolveGuild(
+    email: string,
+    guildIdFromQuery: string | null,
+    mode: "read" | "write",
+) {
     const user = await prisma.user.findUnique({
         where: { email },
         select: { id: true, discordId: true },
@@ -45,7 +48,7 @@ async function resolveGuild(email: string, guildIdFromQuery: string | null) {
         userId: user.id,
         discordGuildId: guildId,
         scope: "roster",
-        mode: "read",
+        mode,
         isOwner,
     });
     if (!canAccess) return { error: "Access denied for roster", status: 403 as const };
@@ -66,7 +69,7 @@ export async function GET(request: Request) {
     if (!eventId)
         return NextResponse.json({ error: "Missing eventId" }, { status: 400 });
 
-    const resolved = await resolveGuild(session.user.email, guildIdFromQuery);
+    const resolved = await resolveGuild(session.user.email, guildIdFromQuery, "read");
     if ("error" in resolved)
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
 
@@ -107,6 +110,7 @@ export async function PUT(request: Request) {
     const resolved = await resolveGuild(
         session.user.email,
         body.guildId ?? null,
+        "write",
     );
     if ("error" in resolved)
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });

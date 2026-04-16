@@ -149,68 +149,90 @@ export default function PayoutClient() {
     [debouncedUpdate],
   );
 
-  // Fetch current user (for lock permission check)
-  const { data: currentUser } = useQuery({
-    queryKey: ["current-user"],
+  // Fetch current user access state (includes selected guild)
+  const { data: currentUserAccess } = useQuery({
+    queryKey: ["current-user-access"],
     queryFn: async () => {
       const res = await fetch("/api/me");
       if (!res.ok) return null;
-      const data = (await res.json()) as { user: { id: string } };
-      return data.user;
+      return (await res.json()) as {
+        user: { id: string };
+        selectedGuildId: string | null;
+      };
     },
     ...queryPresets.longLived,
   });
 
+  const currentUserId = currentUserAccess?.user?.id ?? null;
+  const selectedGuildId = currentUserAccess?.selectedGuildId ?? null;
+  const payoutSessionsQueryKey = useMemo(
+    () => ["payout-sessions", selectedGuildId ?? "none"],
+    [selectedGuildId],
+  );
+  const guildConfigQueryKey = useMemo(
+    () => ["guild-config", selectedGuildId ?? "none"],
+    [selectedGuildId],
+  );
+
   // Fetch sessions
   const { data: sessions = [], isLoading: loadingSessions } = useQuery({
-    queryKey: ["payout-sessions"],
+    queryKey: payoutSessionsQueryKey,
     queryFn: async () => {
-      const res = await fetch("/api/payout/sessions");
+      if (!selectedGuildId) return [];
+      const res = await fetch(
+        `/api/payout/sessions?guildId=${encodeURIComponent(selectedGuildId)}`,
+      );
       if (!res.ok) throw new Error("Failed to fetch sessions");
       return res.json() as Promise<PayoutSession[]>;
     },
+    enabled: Boolean(selectedGuildId),
     ...queryPresets.shortLived,
   });
 
   // Fetch guild config for multipliers
   const { data: guildConfig } = useQuery({
-    queryKey: ["guild-config"],
+    queryKey: guildConfigQueryKey,
     queryFn: async () => {
-      const res = await fetch("/api/guild-config");
+      if (!selectedGuildId) return null;
+      const res = await fetch(
+        `/api/guild-config?guildId=${encodeURIComponent(selectedGuildId)}`,
+      );
       if (!res.ok) throw new Error("Failed to fetch config");
       return res.json();
     },
+    enabled: Boolean(selectedGuildId),
     ...queryPresets.mediumLived,
   });
 
   // Search Discord users
   const { data: searchResults = [] } = useQuery({
-    queryKey: ["discord-search", searchQuery],
+    queryKey: ["discord-search", selectedGuildId ?? "none", searchQuery],
     queryFn: async () => {
-      if (searchQuery.length < 2) return [];
+      if (!selectedGuildId || searchQuery.length < 2) return [];
       const res = await fetch(
-        `/api/discord/users/search?q=${encodeURIComponent(searchQuery)}`,
+        `/api/discord/users/search?q=${encodeURIComponent(searchQuery)}&guildId=${encodeURIComponent(selectedGuildId)}`,
       );
       if (!res.ok) return [];
       return res.json() as Promise<DiscordUser[]>;
     },
-    enabled: searchQuery.length >= 2,
+    enabled: Boolean(selectedGuildId) && searchQuery.length >= 2,
     ...queryPresets.search,
   });
 
   // Create session
   const createSessionMutation = useMutation({
     mutationFn: async () => {
+      if (!selectedGuildId) throw new Error("No guild selected");
       const res = await fetch("/api/payout/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ guildId: selectedGuildId }),
       });
       if (!res.ok) throw new Error("Failed to create session");
       return res.json();
     },
     onSuccess: (newSession) => {
-      queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+      queryClient.invalidateQueries({ queryKey: payoutSessionsQueryKey });
       setSelectedSessionId(newSession.id);
       toast.success("Session created");
     },
@@ -229,7 +251,7 @@ export default function PayoutClient() {
       const res = await fetch(`/api/payout/sessions/${data.sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data.updates),
+        body: JSON.stringify({ ...data.updates, guildId: selectedGuildId }),
       });
 
       if (!res.ok) {
@@ -242,7 +264,7 @@ export default function PayoutClient() {
       return res.json() as Promise<PayoutSession>;
     },
     onSuccess: (updated) => {
-      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+      queryClient.setQueryData(payoutSessionsQueryKey, (old: PayoutSession[]) =>
         old.map((session) => (session.id === updated.id ? updated : session)),
       );
       toast.success("Session updated");
@@ -252,9 +274,13 @@ export default function PayoutClient() {
 
   const deleteSessionMutation = useMutation({
     mutationFn: async (sessionId: string) => {
-      const res = await fetch(`/api/payout/sessions/${sessionId}`, {
-        method: "DELETE",
-      });
+      if (!selectedGuildId) throw new Error("No guild selected");
+      const res = await fetch(
+        `/api/payout/sessions/${sessionId}?guildId=${encodeURIComponent(selectedGuildId)}`,
+        {
+          method: "DELETE",
+        },
+      );
 
       if (!res.ok) {
         const payload = (await res.json().catch(() => null)) as {
@@ -266,7 +292,7 @@ export default function PayoutClient() {
       return res.json() as Promise<{ success: boolean }>;
     },
     onSuccess: (_, deletedSessionId) => {
-      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+      queryClient.setQueryData(payoutSessionsQueryKey, (old: PayoutSession[]) =>
         old.filter((session) => session.id !== deletedSessionId),
       );
       if (selectedSessionId === deletedSessionId) {
@@ -290,7 +316,7 @@ export default function PayoutClient() {
       const res = await fetch(`/api/payout/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isLocked }),
+        body: JSON.stringify({ isLocked, guildId: selectedGuildId }),
       });
       if (!res.ok) {
         const payload = (await res.json().catch(() => null)) as {
@@ -301,7 +327,7 @@ export default function PayoutClient() {
       return res.json() as Promise<PayoutSession>;
     },
     onSuccess: (updated) => {
-      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+      queryClient.setQueryData(payoutSessionsQueryKey, (old: PayoutSession[]) =>
         old.map((s) => (s.id === updated.id ? updated : s)),
       );
       toast.success(updated.isLocked ? "Session locked" : "Session unlocked");
@@ -321,13 +347,16 @@ export default function PayoutClient() {
       const res = await fetch(`/api/payout/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || null }),
+        body: JSON.stringify({
+          name: name.trim() || null,
+          guildId: selectedGuildId,
+        }),
       });
       if (!res.ok) throw new Error("Failed to rename session");
       return res.json() as Promise<PayoutSession>;
     },
     onSuccess: (updated) => {
-      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+      queryClient.setQueryData(payoutSessionsQueryKey, (old: PayoutSession[]) =>
         old.map((s) => (s.id === updated.id ? updated : s)),
       );
       setRenamingSessionId(null);
@@ -341,7 +370,7 @@ export default function PayoutClient() {
       const res = await fetch(`/api/payout/sessions/${sessionId}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ guildId: selectedGuildId }),
       });
 
       if (!res.ok) {
@@ -377,7 +406,7 @@ export default function PayoutClient() {
       const res = await fetch(`/api/payout/sessions/${sessionId}/share`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ guildId: selectedGuildId }),
       });
 
       if (!res.ok) {
@@ -413,6 +442,7 @@ export default function PayoutClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: selectedSessionId,
+          guildId: selectedGuildId,
           discordUserId: user.id,
           username: user.username,
           displayName: user.displayName,
@@ -422,7 +452,7 @@ export default function PayoutClient() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+      queryClient.invalidateQueries({ queryKey: payoutSessionsQueryKey });
       setSearchQuery("");
       toast.success("Player added");
     },
@@ -438,7 +468,7 @@ export default function PayoutClient() {
       const res = await fetch("/api/payout/entries", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, guildId: selectedGuildId }),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -448,36 +478,42 @@ export default function PayoutClient() {
     },
     onMutate: async (data) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["payout-sessions"] });
+      await queryClient.cancelQueries({ queryKey: payoutSessionsQueryKey });
 
       // Snapshot current data
-      const previousSessions = queryClient.getQueryData<PayoutSession[]>([
-        "payout-sessions",
-      ]);
+      const previousSessions = queryClient.getQueryData<PayoutSession[]>(
+        payoutSessionsQueryKey,
+      );
 
       // Update cache optimistically
-      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) => {
-        return old.map((session) => {
-          if (session.id === selectedSessionId) {
-            return {
-              ...session,
-              entries: session.entries.map((entry) =>
-                entry.id === data.entryId
-                  ? { ...entry, ...data.updates }
-                  : entry,
-              ),
-            };
-          }
-          return session;
-        });
-      });
+      queryClient.setQueryData(
+        payoutSessionsQueryKey,
+        (old: PayoutSession[]) => {
+          return old.map((session) => {
+            if (session.id === selectedSessionId) {
+              return {
+                ...session,
+                entries: session.entries.map((entry) =>
+                  entry.id === data.entryId
+                    ? { ...entry, ...data.updates }
+                    : entry,
+                ),
+              };
+            }
+            return session;
+          });
+        },
+      );
 
       return { previousSessions };
     },
     onError: (error: Error, _, context) => {
       // Revert on error
       if (context?.previousSessions) {
-        queryClient.setQueryData(["payout-sessions"], context.previousSessions);
+        queryClient.setQueryData(
+          payoutSessionsQueryKey,
+          context.previousSessions,
+        );
       }
       toast.error(`Error: ${error.message}`);
     },
@@ -494,6 +530,7 @@ export default function PayoutClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entryId: data.entryId,
+          guildId: selectedGuildId,
           updates: { isPaid: data.isPaid },
         }),
       });
@@ -504,11 +541,11 @@ export default function PayoutClient() {
       return res.json();
     },
     onMutate: async (data) => {
-      await queryClient.cancelQueries({ queryKey: ["payout-sessions"] });
-      const previousSessions = queryClient.getQueryData<PayoutSession[]>([
-        "payout-sessions",
-      ]);
-      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) =>
+      await queryClient.cancelQueries({ queryKey: payoutSessionsQueryKey });
+      const previousSessions = queryClient.getQueryData<PayoutSession[]>(
+        payoutSessionsQueryKey,
+      );
+      queryClient.setQueryData(payoutSessionsQueryKey, (old: PayoutSession[]) =>
         old.map((session) => ({
           ...session,
           entries: session.entries.map((entry) =>
@@ -522,7 +559,10 @@ export default function PayoutClient() {
     },
     onError: (error: Error, _, context) => {
       if (context?.previousSessions) {
-        queryClient.setQueryData(["payout-sessions"], context.previousSessions);
+        queryClient.setQueryData(
+          payoutSessionsQueryKey,
+          context.previousSessions,
+        );
       }
       toast.error(`Error: ${error.message}`);
     },
@@ -543,7 +583,7 @@ export default function PayoutClient() {
         };
 
         if (payload.type === "update" && payload.topic === "payout") {
-          queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+          queryClient.invalidateQueries({ queryKey: payoutSessionsQueryKey });
         }
       } catch {
         // Ignore malformed SSE messages.
@@ -553,7 +593,7 @@ export default function PayoutClient() {
     return () => {
       source.close();
     };
-  }, [queryClient]);
+  }, [queryClient, payoutSessionsQueryKey]);
 
   // Delete entry with optimistic updates
   const deleteEntryMutation = useMutation({
@@ -561,29 +601,35 @@ export default function PayoutClient() {
       const res = await fetch("/api/payout/entries", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entryId }),
+        body: JSON.stringify({ entryId, guildId: selectedGuildId }),
       });
       if (!res.ok) throw new Error("Failed to delete entry");
       return res.json();
     },
     onMutate: async (entryId) => {
-      await queryClient.cancelQueries({ queryKey: ["payout-sessions"] });
-      const previousSessions = queryClient.getQueryData<PayoutSession[]>([
-        "payout-sessions",
-      ]);
+      await queryClient.cancelQueries({ queryKey: payoutSessionsQueryKey });
+      const previousSessions = queryClient.getQueryData<PayoutSession[]>(
+        payoutSessionsQueryKey,
+      );
 
-      queryClient.setQueryData(["payout-sessions"], (old: PayoutSession[]) => {
-        return old.map((session) => ({
-          ...session,
-          entries: session.entries.filter((e) => e.id !== entryId),
-        }));
-      });
+      queryClient.setQueryData(
+        payoutSessionsQueryKey,
+        (old: PayoutSession[]) => {
+          return old.map((session) => ({
+            ...session,
+            entries: session.entries.filter((e) => e.id !== entryId),
+          }));
+        },
+      );
 
       return { previousSessions };
     },
     onError: (error: Error, _, context) => {
       if (context?.previousSessions) {
-        queryClient.setQueryData(["payout-sessions"], context.previousSessions);
+        queryClient.setQueryData(
+          payoutSessionsQueryKey,
+          context.previousSessions,
+        );
       }
       toast.error(`Error: ${error.message}`);
     },
@@ -597,13 +643,16 @@ export default function PayoutClient() {
       const res = await fetch("/api/payout/import-roster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: selectedSessionId }),
+        body: JSON.stringify({
+          sessionId: selectedSessionId,
+          guildId: selectedGuildId,
+        }),
       });
       if (!res.ok) throw new Error("Failed to import roster");
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+      queryClient.invalidateQueries({ queryKey: payoutSessionsQueryKey });
       toast.success(`${data.imported} players imported`);
     },
     onError: () => toast.error("Error while importing"),
@@ -616,7 +665,10 @@ export default function PayoutClient() {
       const res = await fetch("/api/payout/import-zoo-role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: selectedSessionId }),
+        body: JSON.stringify({
+          sessionId: selectedSessionId,
+          guildId: selectedGuildId,
+        }),
       });
 
       if (!res.ok) {
@@ -629,7 +681,7 @@ export default function PayoutClient() {
       return res.json() as Promise<{ imported: number; matched: number }>;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["payout-sessions"] });
+      queryClient.invalidateQueries({ queryKey: payoutSessionsQueryKey });
       toast.success(
         `${data.imported} player(s) imported from Zoo role (${data.matched} matched).`,
       );
@@ -890,7 +942,7 @@ export default function PayoutClient() {
                           isLoading={toggleLockMutation.isPending}
                           disabled={
                             session.isLocked &&
-                            session.lockedByUserId !== currentUser?.id
+                            session.lockedByUserId !== currentUserId
                           }
                           className={`px-3 rounded ${
                             session.isLocked
