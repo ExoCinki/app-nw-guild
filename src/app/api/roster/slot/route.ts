@@ -234,15 +234,21 @@ export async function PUT(request: Request) {
             ),
         );
     } else {
-        // Update only the specific slot
-        await prisma.rosterSlot.update({
+        // Upsert the specific slot (handles missing slots in existing groups)
+        await prisma.rosterSlot.upsert({
             where: {
                 groupId_position: {
                     groupId: group.id,
                     position: payload.slotPosition,
                 },
             },
-            data: {
+            update: {
+                playerName: payload.playerName?.trim() || null,
+                role: payload.playerName?.trim() ? payload.role || null : null,
+            },
+            create: {
+                groupId: group.id,
+                position: payload.slotPosition,
                 playerName: payload.playerName?.trim() || null,
                 role: payload.playerName?.trim() ? payload.role || null : null,
             },
