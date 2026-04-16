@@ -989,6 +989,16 @@ export function RosterCard() {
   );
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [roleOverrides, setRoleOverrides] = useState<Record<string, RoleKey>>(
+    {},
+  );
+  const [nameOverrides, setNameOverrides] = useState<Record<string, string>>(
+    {},
+  );
+  const [mercFlags, setMercFlags] = useState<Record<string, boolean>>({});
+  const [editingNameKey, setEditingNameKey] = useState<string | null>(null);
+  const [editingNameValue, setEditingNameValue] = useState("");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["roster"],
@@ -1264,10 +1274,17 @@ export function RosterCard() {
     ) as string[],
   );
 
+  const searchQuery = playerSearch.trim().toLowerCase();
+
   const sortedParticipants = [...(participantsQuery.data?.participants ?? [])]
     .filter((p) => {
       const key = p.name?.trim() || p.userId?.trim();
-      return key ? !assignedPlayerNames.has(key) : true;
+      if (key && assignedPlayerNames.has(key)) return false;
+      if (searchQuery) {
+        const name = (p.name ?? p.userId ?? "").toLowerCase();
+        return name.includes(searchQuery);
+      }
+      return true;
     })
     .sort((a, b) => {
       const roleA = resolveParticipantRole(a);
@@ -1410,280 +1427,430 @@ export function RosterCard() {
         </div>
       </div>
 
-      {/* ── Event selector ─────────────────────────────────────────────── */}
-      <div className="mt-5 rounded-xl border border-slate-700/60 bg-slate-800/50 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <FontAwesomeIcon
-              icon={faCalendarDays}
-              className="h-4 w-4 shrink-0 text-sky-400"
-            />
-            <span className="text-sm font-medium text-slate-200">
-              RaidHelper event
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              void handleRefreshRaidHelper();
-            }}
-            disabled={eventsQuery.isFetching || isRefreshingRaidHelper}
-            className="rounded border border-slate-700/60 px-1.5 py-1 text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-40"
-            aria-label="Refresh"
-          >
-            <FontAwesomeIcon
-              icon={faRotateRight}
-              className={`h-3 w-3 ${eventsQuery.isFetching || isRefreshingRaidHelper ? "animate-spin" : ""}`}
-            />
-          </button>
-        </div>
-
-        {eventsQuery.isError ? (
-          <p className="mt-2 text-xs text-amber-400">
-            {eventsQuery.error instanceof Error
-              ? eventsQuery.error.message
-              : "Unable to load events."}
-          </p>
-        ) : eventsQuery.isLoading ? (
-          <div className="mt-2">
-            <InlineLoadingIndicator />
-          </div>
-        ) : (eventsQuery.data?.events.length ?? 0) === 0 ? (
-          <p className="mt-2 text-xs text-slate-500">
-            No event found in this channel.
-          </p>
-        ) : (
-          <select
-            value={selectedEventId}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              setSelectedEventId(nextValue);
-              selectedEventMutation.mutate(nextValue || null);
-            }}
-            disabled={selectedEventMutation.isPending}
-            className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
-          >
-            <option value="">-- Select an event --</option>
-            {eventsQuery.data?.events.map((event) => {
-              const date = new Date(event.startTime * 1000);
-              const label = `${date.toLocaleDateString("en-US", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} — ${event.title}`;
-              return (
-                <option key={event.id} value={event.id}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-        )}
-
-        <div
-          className={`mt-3 flex items-center justify-between rounded-md border px-3 py-2 text-xs transition-colors ${
-            lastRefreshRaw === null
-              ? "border-slate-700/40 bg-slate-900/40 text-slate-500"
-              : stale
-                ? "border-amber-500/30 bg-amber-500/5 text-amber-400"
-                : "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
-          }`}
-        >
-          <span className="font-medium tracking-wide">Last sync</span>
-          <span
-            className={`${
-              lastRefreshRaw === null
-                ? "text-slate-500"
-                : stale
-                  ? "text-amber-200"
-                  : "text-emerald-200"
-            }`}
-          >
-            {lastRefreshDisplay}
-          </span>
-        </div>
-
-        {selectedEventId ? (
-          <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/40">
-            <div className="border-b border-slate-800 px-3 py-2">
-              <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Players to drag into groups
-              </h3>
+      {/* ── Main layout: left = players, right = rosters ─────────────── */}
+      <div className="mt-5 flex gap-4">
+        {/* ── Left panel: event selector + player list ──────────────── */}
+        <div className="w-64 shrink-0">
+          <div className="rounded-xl border border-slate-700/60 bg-slate-800/50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <FontAwesomeIcon
+                  icon={faCalendarDays}
+                  className="h-4 w-4 shrink-0 text-sky-400"
+                />
+                <span className="text-sm font-medium text-slate-200">
+                  RaidHelper event
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleRefreshRaidHelper();
+                }}
+                disabled={eventsQuery.isFetching || isRefreshingRaidHelper}
+                className="rounded border border-slate-700/60 px-1.5 py-1 text-slate-500 transition-colors hover:text-slate-300 disabled:opacity-40"
+                aria-label="Refresh"
+              >
+                <FontAwesomeIcon
+                  icon={faRotateRight}
+                  className={`h-3 w-3 ${eventsQuery.isFetching || isRefreshingRaidHelper ? "animate-spin" : ""}`}
+                />
+              </button>
             </div>
 
-            {participantsQuery.isLoading
-              ? null
-              : participantsQuery.isError
-                ? null
-                : (participantsQuery.data?.participants.length ?? 0) === 0
-                  ? null
-                  : (() => {
-                      const allParticipants =
-                        participantsQuery.data?.participants ?? [];
-                      const roleCounts: Partial<Record<string, number>> = {};
-                      for (const p of allParticipants) {
-                        const role = resolveParticipantRole(p) ?? "__none";
-                        roleCounts[role] = (roleCounts[role] ?? 0) + 1;
-                      }
-                      const orderedRoles = Object.keys(ROLE_META).sort(
-                        (a, b) =>
-                          (ROLE_SORT_PRIORITY[a] ?? 99) -
-                          (ROLE_SORT_PRIORITY[b] ?? 99),
-                      );
-                      const visibleRoles = orderedRoles.filter(
-                        (r) => (roleCounts[r] ?? 0) > 0,
-                      );
-                      if (visibleRoles.length === 0) return null;
-                      return (
-                        <div className="flex flex-wrap gap-2 border-b border-slate-800 px-3 py-2">
-                          {visibleRoles.map((roleKey) => {
-                            const meta = ROLE_META[roleKey];
-                            const count = roleCounts[roleKey] ?? 0;
-                            return (
-                              <span
-                                key={roleKey}
-                                className="flex items-center gap-1.5 rounded-full border border-slate-700/60 bg-slate-900/60 px-2.5 py-0.5 text-xs font-medium"
-                              >
-                                <FontAwesomeIcon
-                                  icon={meta.icon}
-                                  className={`h-2.5 w-2.5 ${meta.color}`}
-                                />
-                                <span className="text-slate-300">
-                                  {meta.label}
-                                </span>
-                                <span className="text-slate-100 tabular-nums">
-                                  {count}
-                                </span>
-                              </span>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-
-            {participantsQuery.isLoading ? (
-              <div className="px-3 py-2">
+            {eventsQuery.isError ? (
+              <p className="mt-2 text-xs text-amber-400">
+                {eventsQuery.error instanceof Error
+                  ? eventsQuery.error.message
+                  : "Unable to load events."}
+              </p>
+            ) : eventsQuery.isLoading ? (
+              <div className="mt-2">
                 <InlineLoadingIndicator />
               </div>
-            ) : participantsQuery.isError ? (
-              <p className="px-3 py-3 text-sm text-amber-400">
-                {participantsQuery.error instanceof Error
-                  ? participantsQuery.error.message
-                  : "Unable to load participants."}
-              </p>
-            ) : (participantsQuery.data?.participants.length ?? 0) === 0 ? (
-              <p className="px-3 py-3 text-sm text-slate-500">
-                No usable participant found for this event.
+            ) : (eventsQuery.data?.events.length ?? 0) === 0 ? (
+              <p className="mt-2 text-xs text-slate-500">
+                No event found in this channel.
               </p>
             ) : (
-              <div className="max-h-80 overflow-auto p-3">
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-                  {sortedParticipants.map((participant, index) => (
-                    <button
-                      key={`${participant.userId ?? participant.name ?? "participant"}-${index}`}
-                      type="button"
-                      draggable
-                      title={`${participant.name ?? "No name"}${participant.className ? ` | ${participant.className}` : ""}${participant.specName ? ` | ${participant.specName}` : ""}`}
-                      onDragStart={(event) => {
-                        const payload: DragParticipantPayload = {
-                          name: participant.name,
-                          userId: participant.userId,
-                          specName: participant.specName,
-                          className: participant.className,
-                        };
-                        const serialized = JSON.stringify(payload);
-                        event.dataTransfer.setData(
-                          "application/json",
-                          serialized,
+              <select
+                value={selectedEventId}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setSelectedEventId(nextValue);
+                  selectedEventMutation.mutate(nextValue || null);
+                }}
+                disabled={selectedEventMutation.isPending}
+                className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+              >
+                <option value="">-- Select an event --</option>
+                {eventsQuery.data?.events.map((event) => {
+                  const date = new Date(event.startTime * 1000);
+                  const label = `${date.toLocaleDateString("en-US", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} — ${event.title}`;
+                  return (
+                    <option key={event.id} value={event.id}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
+
+            <div
+              className={`mt-3 flex items-center justify-between rounded-md border px-3 py-2 text-xs transition-colors ${
+                lastRefreshRaw === null
+                  ? "border-slate-700/40 bg-slate-900/40 text-slate-500"
+                  : stale
+                    ? "border-amber-500/30 bg-amber-500/5 text-amber-400"
+                    : "border-emerald-500/30 bg-emerald-500/5 text-emerald-400"
+              }`}
+            >
+              <span className="font-medium tracking-wide">Last sync</span>
+              <span
+                className={`${
+                  lastRefreshRaw === null
+                    ? "text-slate-500"
+                    : stale
+                      ? "text-amber-200"
+                      : "text-emerald-200"
+                }`}
+              >
+                {lastRefreshDisplay}
+              </span>
+            </div>
+          </div>
+
+          {/* Player list */}
+          {selectedEventId ? (
+            <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40">
+              <div className="border-b border-slate-800 px-3 py-2 flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Players
+                </h3>
+                {Object.values(mercFlags).filter(Boolean).length > 0 && (
+                  <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
+                    {Object.values(mercFlags).filter(Boolean).length} merc
+                  </span>
+                )}
+              </div>
+
+              {/* Role counts */}
+              {participantsQuery.isLoading
+                ? null
+                : participantsQuery.isError
+                  ? null
+                  : (participantsQuery.data?.participants.length ?? 0) === 0
+                    ? null
+                    : (() => {
+                        const allParticipants =
+                          participantsQuery.data?.participants ?? [];
+                        const roleCounts: Partial<Record<string, number>> = {};
+                        for (const p of allParticipants) {
+                          const role = resolveParticipantRole(p) ?? "__none";
+                          roleCounts[role] = (roleCounts[role] ?? 0) + 1;
+                        }
+                        const orderedRoles = Object.keys(ROLE_META).sort(
+                          (a, b) =>
+                            (ROLE_SORT_PRIORITY[a] ?? 99) -
+                            (ROLE_SORT_PRIORITY[b] ?? 99),
                         );
-                        event.dataTransfer.setData("text/plain", serialized);
-                        event.dataTransfer.effectAllowed = "copy";
-                      }}
-                      className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 text-left transition hover:border-sky-500/40 hover:bg-slate-900"
-                    >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-800">
-                        <RoleIcon role={resolveParticipantRole(participant)} />
-                      </div>
-                      <div className="min-w-0 truncate text-sm font-medium text-slate-100">
-                        {participant.name ?? "No name"}
-                      </div>
-                    </button>
+                        const visibleRoles = orderedRoles.filter(
+                          (r) => (roleCounts[r] ?? 0) > 0,
+                        );
+                        if (visibleRoles.length === 0) return null;
+                        return (
+                          <div className="flex flex-wrap gap-1.5 border-b border-slate-800 px-3 py-2">
+                            {visibleRoles.map((roleKey) => {
+                              const meta = ROLE_META[roleKey];
+                              const count = roleCounts[roleKey] ?? 0;
+                              return (
+                                <span
+                                  key={roleKey}
+                                  className="flex items-center gap-1 rounded-full border border-slate-700/60 bg-slate-900/60 px-2 py-0.5 text-xs font-medium"
+                                >
+                                  <FontAwesomeIcon
+                                    icon={meta.icon}
+                                    className={`h-2.5 w-2.5 ${meta.color}`}
+                                  />
+                                  <span className="text-slate-100 tabular-nums">
+                                    {count}
+                                  </span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+              {participantsQuery.isLoading ? (
+                <div className="px-3 py-2">
+                  <InlineLoadingIndicator />
+                </div>
+              ) : participantsQuery.isError ? (
+                <p className="px-3 py-3 text-sm text-amber-400">
+                  {participantsQuery.error instanceof Error
+                    ? participantsQuery.error.message
+                    : "Unable to load participants."}
+                </p>
+              ) : (participantsQuery.data?.participants.length ?? 0) === 0 ? (
+                <p className="px-3 py-3 text-sm text-slate-500">
+                  No usable participant found for this event.
+                </p>
+              ) : (
+                <>
+                  {/* Search input */}
+                  <div className="border-b border-slate-800 px-2 py-2">
+                    <input
+                      type="text"
+                      value={playerSearch}
+                      onChange={(e) => setPlayerSearch(e.target.value)}
+                      placeholder="Search player..."
+                      className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none focus:border-sky-500 placeholder:text-slate-500"
+                    />
+                  </div>
+                  <div className="flex max-h-[calc(100vh-360px)] flex-col gap-1 overflow-auto p-2">
+                    {sortedParticipants.length === 0 ? (
+                      <p className="px-1 py-2 text-xs text-slate-500">
+                        No player found.
+                      </p>
+                    ) : (
+                      sortedParticipants.map((participant, index) => {
+                        const participantKey =
+                          participant.userId ??
+                          participant.name ??
+                          `idx-${index}`;
+                        const resolvedRole =
+                          resolveParticipantRole(participant);
+                        const overriddenRole =
+                          participantKey in roleOverrides
+                            ? roleOverrides[participantKey]
+                            : resolvedRole;
+                        const displayName =
+                          nameOverrides[participantKey] ??
+                          participant.name ??
+                          "No name";
+                        const isMerc = !!mercFlags[participantKey];
+                        const isEditingName = editingNameKey === participantKey;
+                        return (
+                          <div
+                            key={`${participantKey}-${index}`}
+                            draggable={!isEditingName}
+                            title={`${displayName}${participant.className ? ` | ${participant.className}` : ""}${participant.specName ? ` | ${participant.specName}` : ""}`}
+                            onDragStart={(event) => {
+                              if (isEditingName) return;
+                              const effectiveName = isMerc
+                                ? `[M] ${displayName}`
+                                : displayName;
+                              const payload: DragParticipantPayload = {
+                                name: effectiveName,
+                                userId: participant.userId,
+                                specName:
+                                  overriddenRole !== resolvedRole
+                                    ? null
+                                    : participant.specName,
+                                className:
+                                  overriddenRole !== resolvedRole
+                                    ? overriddenRole
+                                    : participant.className,
+                              };
+                              const serialized = JSON.stringify(payload);
+                              event.dataTransfer.setData(
+                                "application/json",
+                                serialized,
+                              );
+                              event.dataTransfer.setData(
+                                "text/plain",
+                                serialized,
+                              );
+                              event.dataTransfer.effectAllowed = "copy";
+                            }}
+                            className={`flex flex-col gap-1 rounded-lg border bg-slate-900/80 px-2 py-1.5 transition hover:bg-slate-900 ${isMerc ? "border-amber-500/40 hover:border-amber-500/60" : "border-slate-800 hover:border-sky-500/40"} ${isEditingName ? "cursor-default" : "cursor-grab"}`}
+                          >
+                            {/* Row 1: icon + name + merc button */}
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-800">
+                                <RoleIcon role={overriddenRole} />
+                              </div>
+                              {isEditingName ? (
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  value={editingNameValue}
+                                  onChange={(e) =>
+                                    setEditingNameValue(e.target.value)
+                                  }
+                                  onBlur={() => {
+                                    const trimmed = editingNameValue.trim();
+                                    if (
+                                      trimmed &&
+                                      trimmed !== (participant.name ?? "")
+                                    ) {
+                                      setNameOverrides((prev) => ({
+                                        ...prev,
+                                        [participantKey]: trimmed,
+                                      }));
+                                    } else if (!trimmed) {
+                                      setNameOverrides((prev) => {
+                                        const next = { ...prev };
+                                        delete next[participantKey];
+                                        return next;
+                                      });
+                                    }
+                                    setEditingNameKey(null);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      e.currentTarget.blur();
+                                    if (e.key === "Escape") {
+                                      setEditingNameKey(null);
+                                    }
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="min-w-0 flex-1 rounded border border-sky-500 bg-slate-800 px-1 py-0 text-xs font-medium text-slate-100 outline-none"
+                                />
+                              ) : (
+                                <div
+                                  className="min-w-0 flex-1 truncate text-xs font-medium text-slate-100 cursor-text"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingNameKey(participantKey);
+                                    setEditingNameValue(
+                                      displayName === "No name"
+                                        ? ""
+                                        : displayName,
+                                    );
+                                  }}
+                                  title="Click to edit name"
+                                >
+                                  {displayName}
+                                  {nameOverrides[participantKey] && (
+                                    <span className="ml-1 text-[9px] text-sky-400">
+                                      (edited)
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMercFlags((prev) => ({
+                                    ...prev,
+                                    [participantKey]: !prev[participantKey],
+                                  }));
+                                }}
+                                className={`shrink-0 rounded px-1 py-0 text-[9px] font-bold uppercase transition ${isMerc ? "bg-amber-500/30 text-amber-400 hover:bg-amber-500/50" : "bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-300"}`}
+                                title="Toggle mercenary"
+                              >
+                                M
+                              </button>
+                            </div>
+                            {/* Row 2: role select */}
+                            <select
+                              value={overriddenRole ?? ""}
+                              onChange={(e) => {
+                                const val = e.target.value as RoleKey;
+                                setRoleOverrides((prev) => ({
+                                  ...prev,
+                                  [participantKey]: val || null,
+                                }));
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full rounded border border-slate-700 bg-slate-800 py-0.5 pl-1 pr-4 text-[10px] text-slate-300 outline-none focus:border-sky-500"
+                            >
+                              <option value="">— role —</option>
+                              {Object.entries(ROLE_META).map(([key, meta]) => (
+                                <option key={key} value={key}>
+                                  {meta.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        {/* ── Right panel: rosters ──────────────────────────────────────── */}
+        <div className="flex min-w-0 flex-1 gap-4">
+          {/* Roster 1 */}
+          <div className="min-w-0 flex-1 space-y-3">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              {enableSecondRoster ? "Roster 1" : "Roster"}
+            </h3>
+            <div className="grid grid-cols-5 gap-2">
+              {row1.map((group) => (
+                <GroupCard
+                  key={`r1-${group.groupNumber}`}
+                  rosterIndex={1}
+                  group={group}
+                  onSaved={handleGroupSaved}
+                  onDropParticipant={handleParticipantDrop}
+                  pendingDropTarget={pendingDropTarget}
+                  queryClient={queryClient}
+                />
+              ))}
+            </div>
+            <div className="border-t border-slate-800/60" />
+            <div className="grid grid-cols-5 gap-2">
+              {row2.map((group) => (
+                <GroupCard
+                  key={`r1-${group.groupNumber}`}
+                  rosterIndex={1}
+                  group={group}
+                  onSaved={handleGroupSaved}
+                  onDropParticipant={handleParticipantDrop}
+                  pendingDropTarget={pendingDropTarget}
+                  queryClient={queryClient}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Roster 2 */}
+          {enableSecondRoster ? (
+            <>
+              <div className="border-l border-slate-700/60" />
+              <div className="min-w-0 flex-1 space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Roster 2
+                </h3>
+                <div className="grid grid-cols-5 gap-2">
+                  {secondRow1.map((group) => (
+                    <GroupCard
+                      key={`r2-${group.groupNumber}`}
+                      rosterIndex={2}
+                      group={group}
+                      onSaved={handleGroupSaved}
+                      onDropParticipant={handleParticipantDrop}
+                      pendingDropTarget={pendingDropTarget}
+                      queryClient={queryClient}
+                    />
+                  ))}
+                </div>
+                <div className="border-t border-slate-800/60" />
+                <div className="grid grid-cols-5 gap-2">
+                  {secondRow2.map((group) => (
+                    <GroupCard
+                      key={`r2-${group.groupNumber}`}
+                      rosterIndex={2}
+                      group={group}
+                      onSaved={handleGroupSaved}
+                      onDropParticipant={handleParticipantDrop}
+                      pendingDropTarget={pendingDropTarget}
+                      queryClient={queryClient}
+                    />
                   ))}
                 </div>
               </div>
-            )}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-6 space-y-4">
-        {/* Row 1 – groups 1-5 */}
-        <div className="grid grid-cols-5 gap-3">
-          {row1.map((group) => (
-            <GroupCard
-              key={`r1-${group.groupNumber}`}
-              rosterIndex={1}
-              group={group}
-              onSaved={handleGroupSaved}
-              onDropParticipant={handleParticipantDrop}
-              pendingDropTarget={pendingDropTarget}
-              queryClient={queryClient}
-            />
-          ))}
+            </>
+          ) : null}
         </div>
-
-        <div className="border-t border-slate-800/60" />
-
-        {/* Row 2 – groups 6-10 */}
-        <div className="grid grid-cols-5 gap-3">
-          {row2.map((group) => (
-            <GroupCard
-              key={`r1-${group.groupNumber}`}
-              rosterIndex={1}
-              group={group}
-              onSaved={handleGroupSaved}
-              onDropParticipant={handleParticipantDrop}
-              pendingDropTarget={pendingDropTarget}
-              queryClient={queryClient}
-            />
-          ))}
-        </div>
-
-        {enableSecondRoster ? (
-          <>
-            <div className="mt-2 border-t border-slate-700/80 pt-4">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">
-                Roster 2
-              </h3>
-            </div>
-
-            <div className="grid grid-cols-5 gap-3">
-              {secondRow1.map((group) => (
-                <GroupCard
-                  key={`r2-${group.groupNumber}`}
-                  rosterIndex={2}
-                  group={group}
-                  onSaved={handleGroupSaved}
-                  onDropParticipant={handleParticipantDrop}
-                  pendingDropTarget={pendingDropTarget}
-                  queryClient={queryClient}
-                />
-              ))}
-            </div>
-
-            <div className="border-t border-slate-800/60" />
-
-            <div className="grid grid-cols-5 gap-3">
-              {secondRow2.map((group) => (
-                <GroupCard
-                  key={`r2-${group.groupNumber}`}
-                  rosterIndex={2}
-                  group={group}
-                  onSaved={handleGroupSaved}
-                  onDropParticipant={handleParticipantDrop}
-                  pendingDropTarget={pendingDropTarget}
-                  queryClient={queryClient}
-                />
-              ))}
-            </div>
-          </>
-        ) : null}
       </div>
 
       {/* Legend */}
