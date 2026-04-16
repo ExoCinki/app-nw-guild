@@ -1777,9 +1777,9 @@ export function RosterCard() {
         </div>
 
         {/* ── Right panel: rosters ──────────────────────────────────────── */}
-        <div className="flex min-w-0 flex-1 gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-6">
           {/* Roster 1 */}
-          <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
               {enableSecondRoster ? "Roster 1" : "Roster"}
             </h3>
@@ -1815,8 +1815,8 @@ export function RosterCard() {
           {/* Roster 2 */}
           {enableSecondRoster ? (
             <>
-              <div className="border-l border-slate-700/60" />
-              <div className="min-w-0 flex-1 space-y-3">
+              <div className="border-t border-slate-700/60" />
+              <div className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Roster 2
                 </h3>
