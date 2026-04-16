@@ -136,6 +136,20 @@ model RosterSlot {
   @@unique([groupId, position])
 }
 
+model RosterParticipantOverride {
+  id             String   @id @default(cuid())
+  discordGuildId String
+  eventId        String
+  participantKey String
+  nameOverride   String?
+  roleOverride   String?
+  isMerc         Boolean  @default(false)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([discordGuildId, eventId, participantKey])
+  @@index([discordGuildId, eventId])
+}
+
 model RosterArchive {
   id             String   @id @default(cuid())
   discordGuildId String

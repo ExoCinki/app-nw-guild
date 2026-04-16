@@ -537,6 +537,7 @@ function GroupCard({
   );
   const [editingPlayerName, setEditingPlayerName] = useState("");
   const [editingRole, setEditingRole] = useState<RoleKey>(null);
+  const [mercSlots, setMercSlots] = useState<Record<number, boolean>>({});
 
   function startEdit() {
     setLocalName(group.name ?? "");
@@ -838,7 +839,12 @@ function GroupCard({
                     return;
                   }
 
-                  const resolvedRole = resolveParticipantRole(participant);
+                  // If className is already a known RoleKey (set by role override),
+                  // use it directly instead of trying to resolve from weapon names.
+                  const resolvedRole =
+                    participant.className && participant.className in ROLE_META
+                      ? (participant.className as RoleKey)
+                      : resolveParticipantRole(participant);
 
                   onDropParticipant({
                     rosterIndex,
@@ -863,16 +869,42 @@ function GroupCard({
 
               <span
                 className={`min-w-0 flex-1 truncate text-xs ${
-                  isEmpty ? "italic text-slate-600" : "text-slate-200"
+                  isEmpty
+                    ? "italic text-slate-600"
+                    : mercSlots[slot.position]
+                      ? "text-amber-300"
+                      : "text-slate-200"
                 }`}
               >
                 {isPendingDrop
                   ? "Assigning..."
                   : isEmpty
                     ? "Empty"
-                    : displayPlayer}
+                    : mercSlots[slot.position]
+                      ? `[M] ${displayPlayer}`
+                      : displayPlayer}
               </span>
 
+              {!isEmpty ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMercSlots((prev) => ({
+                      ...prev,
+                      [slot.position]: !prev[slot.position],
+                    }));
+                  }}
+                  className={`shrink-0 rounded px-1 py-0 text-[9px] font-bold uppercase transition ${
+                    mercSlots[slot.position]
+                      ? "bg-amber-500/30 text-amber-400 hover:bg-amber-500/50"
+                      : "bg-slate-800 text-slate-600 hover:bg-slate-700 hover:text-slate-400"
+                  }`}
+                  title="Toggle mercenary"
+                >
+                  M
+                </button>
+              ) : null}
               {!isEmpty ? (
                 <button
                   type="button"
@@ -1117,6 +1149,87 @@ export function RosterCard() {
       setSelectedEventId("");
     }
   }, [data?.roster.selectedEventId, eventsQuery.data?.events, selectedEventId]);
+
+  // ── Participant overrides (global via API) ─────────────────────────────────
+  const guildId = data?.guild.id ?? null;
+
+  const overridesQuery = useQuery({
+    queryKey: ["participant-overrides", guildId, selectedEventId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/roster/participant-overrides?eventId=${encodeURIComponent(selectedEventId)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Failed to load overrides");
+      const json = (await res.json()) as {
+        overrides: {
+          participantKey: string;
+          nameOverride: string | null;
+          roleOverride: string | null;
+          isMerc: boolean;
+        }[];
+      };
+      const roleOv: Record<string, RoleKey> = {};
+      const nameOv: Record<string, string> = {};
+      const mercOv: Record<string, boolean> = {};
+      for (const o of json.overrides) {
+        if (o.roleOverride)
+          roleOv[o.participantKey] = o.roleOverride as RoleKey;
+        if (o.nameOverride) nameOv[o.participantKey] = o.nameOverride;
+        if (o.isMerc) mercOv[o.participantKey] = true;
+      }
+      return { roleOv, nameOv, mercOv };
+    },
+    enabled: Boolean(guildId && selectedEventId),
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  // Sync fetched overrides into local state
+  useEffect(() => {
+    if (!overridesQuery.data) return;
+    setRoleOverrides(overridesQuery.data.roleOv);
+    setNameOverrides(overridesQuery.data.nameOv);
+    setMercFlags(overridesQuery.data.mercOv);
+  }, [overridesQuery.data]);
+
+  // Reset overrides when event changes
+  useEffect(() => {
+    if (!selectedEventId) {
+      setRoleOverrides({});
+      setNameOverrides({});
+      setMercFlags({});
+    }
+  }, [selectedEventId]);
+
+  // Debounced save: push all overrides to API 500ms after last change
+  useEffect(() => {
+    if (!guildId || !selectedEventId) return;
+    const timer = setTimeout(async () => {
+      const allKeys = new Set([
+        ...Object.keys(roleOverrides),
+        ...Object.keys(nameOverrides),
+        ...Object.keys(mercFlags),
+      ]);
+      const overrides = Array.from(allKeys).map((k) => ({
+        participantKey: k,
+        nameOverride: nameOverrides[k] ?? null,
+        roleOverride: roleOverrides[k] ?? null,
+        isMerc: mercFlags[k] ?? false,
+      }));
+      try {
+        await fetch("/api/roster/participant-overrides", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId: selectedEventId, overrides }),
+        });
+      } catch {
+        // silent fail — overrides are non-critical
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [guildId, selectedEventId, roleOverrides, nameOverrides, mercFlags]);
 
   useEffect(() => {
     const source = new EventSource("/api/live-updates");
