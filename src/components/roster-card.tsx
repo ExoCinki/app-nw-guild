@@ -1258,6 +1258,9 @@ export function RosterCard() {
 
         if (payload.type === "update" && payload.topic === "roster") {
           queryClient.invalidateQueries({ queryKey: ["roster"] });
+          queryClient.invalidateQueries({
+            queryKey: ["participant-overrides"],
+          });
         }
       } catch {
         // Ignore malformed SSE messages.
