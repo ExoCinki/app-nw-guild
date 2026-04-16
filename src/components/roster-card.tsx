@@ -890,6 +890,21 @@ function GroupCard({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    startSlotEdit(slot);
+                  }}
+                  disabled={pending || isPendingDrop}
+                  className="shrink-0 text-[10px] text-slate-500 transition-colors hover:text-sky-300 disabled:opacity-40"
+                  aria-label="Edit player"
+                  title="Edit name / role"
+                >
+                  <FontAwesomeIcon icon={faPencil} className="h-2.5 w-2.5" />
+                </button>
+              ) : null}
+              {!isEmpty ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setMercSlots((prev) => ({
                       ...prev,
                       [slot.position]: !prev[slot.position],
