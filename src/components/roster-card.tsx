@@ -22,6 +22,7 @@ import {
   faLock,
   faLockOpen,
   faShareNodes,
+  faFlag,
 } from "@fortawesome/free-solid-svg-icons";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -517,6 +518,29 @@ function RoleIcon({
       icon={meta.icon}
       className={`${sizeClass} ${meta.color}`}
     />
+  );
+}
+
+const FACTION_META: Record<string, string> = {
+  marauder: "text-emerald-400",
+  covenant: "text-yellow-400",
+  syndicate: "text-violet-400",
+};
+
+function FactionIcon({
+  faction,
+  size = "sm",
+}: {
+  faction: string | null;
+  size?: "sm" | "md";
+}) {
+  const sizeClass = size === "md" ? "h-4 w-4" : "h-3 w-3";
+  const colorClass = faction
+    ? (FACTION_META[faction] ?? "text-slate-500")
+    : "text-slate-600";
+
+  return (
+    <FontAwesomeIcon icon={faFlag} className={`${sizeClass} ${colorClass}`} />
   );
 }
 
@@ -2779,6 +2803,11 @@ export function RosterCard() {
                               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-800">
                                 <RoleIcon role={overriddenRole} />
                               </div>
+                              {selectedImportFilterPreset === "euna" ? (
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-800">
+                                  <FactionIcon faction={eunaFaction} />
+                                </div>
+                              ) : null}
                               {isEditingName ? (
                                 <input
                                   autoFocus
@@ -2831,11 +2860,6 @@ export function RosterCard() {
                                   title="Click to edit name"
                                 >
                                   {displayName}
-                                  {nameOverrides[participantKey] && (
-                                    <span className="ml-1 text-[9px] text-sky-400">
-                                      (Edited)
-                                    </span>
-                                  )}
                                 </div>
                               )}
                               <button
@@ -2869,19 +2893,9 @@ export function RosterCard() {
                               <div className="flex items-center gap-2 text-[10px] text-slate-400">
                                 <span className="inline-flex items-center gap-1">
                                   <span>Faction: {factionLabel}</span>
-                                  {hasFactionOverride ? (
-                                    <span className="rounded bg-sky-500/20 px-1 py-0 text-[9px] text-sky-300">
-                                      Edited
-                                    </span>
-                                  ) : null}
                                 </span>
                                 <span className="inline-flex items-center gap-1">
                                   <span>Role: {eunaSpecLabel}</span>
-                                  {hasSpecOverride ? (
-                                    <span className="rounded bg-sky-500/20 px-1 py-0 text-[9px] text-sky-300">
-                                      Edited
-                                    </span>
-                                  ) : null}
                                 </span>
                                 <span>Role Bucket: {roleLabel}</span>
                               </div>
@@ -3081,33 +3095,40 @@ export function RosterCard() {
                 <p className="text-[10px] uppercase tracking-wide text-slate-500">
                   Faction
                 </p>
-                <p className="mt-1 text-xs font-medium text-slate-200">
+                <div className="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200">
+                  <FactionIcon faction="syndicate" />
                   Syndicate
-                </p>
+                </div>
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500">
                   Faction
                 </p>
-                <p className="mt-1 text-xs font-medium text-slate-200">
+                <div className="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200">
+                  <FactionIcon faction="covenant" />
                   Covenant
-                </p>
+                </div>
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500">
                   Faction
                 </p>
-                <p className="mt-1 text-xs font-medium text-slate-200">
+                <div className="mt-1 flex items-center gap-2 text-xs font-medium text-slate-200">
+                  <FactionIcon faction="marauder" />
                   Marauder
-                </p>
+                </div>
               </div>
               <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500">
                   Fallback
                 </p>
-                <p className="mt-1 text-xs font-medium text-slate-400">
-                  Faction N/A • Role N/A
-                </p>
+                <div className="mt-1 flex items-center gap-2 text-xs font-medium text-slate-400">
+                  <FactionIcon faction={null} />
+                  <span>Faction N/A</span>
+                  <span>•</span>
+                  <RoleIcon role={null} />
+                  <span>Role N/A</span>
+                </div>
               </div>
             </div>
 
@@ -3120,6 +3141,7 @@ export function RosterCard() {
                   >
                     <span>{EUNA_SPEC_LABELS[specKey] ?? specKey}</span>
                     <span className="text-slate-500">-&gt;</span>
+                    <RoleIcon role={mappedRole} />
                     <span className="text-slate-100">
                       {mappedRole
                         ? (ROLE_META[mappedRole]?.label ?? "N/A")
