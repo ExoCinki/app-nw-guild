@@ -141,6 +141,19 @@ function normalizeCompactToken(value: string | null) {
   );
 }
 
+function isMercenaryName(value: string | null | undefined) {
+  return /^\s*\[m\]\s*/i.test(value ?? "");
+}
+
+function stripMercenaryPrefix(value: string | null | undefined) {
+  return (value ?? "").replace(/^\s*\[m\]\s*/i, "").trim();
+}
+
+function withMercenaryPrefix(value: string | null | undefined) {
+  const normalized = stripMercenaryPrefix(value);
+  return normalized ? `[M] ${normalized}` : null;
+}
+
 function formatRefreshDateTime(value: string | Date | null | undefined) {
   if (!value) {
     return "Never";
@@ -931,7 +944,6 @@ function GroupCard({
   );
   const [editingPlayerName, setEditingPlayerName] = useState("");
   const [editingRole, setEditingRole] = useState<RoleKey>(null);
-  const [mercSlots, setMercSlots] = useState<Record<number, boolean>>({});
 
   function startEdit() {
     setLocalName(group.name ?? "");
@@ -1129,6 +1141,7 @@ function GroupCard({
         {group.slots.map((slot) => {
           const displayPlayer = slot.playerName;
           const isEmpty = !displayPlayer;
+          const isMercenary = isMercenaryName(displayPlayer);
           const displayRole = isEmpty ? null : (slot.role as RoleKey);
           const slotKey = `${rosterIndex}-${group.groupNumber}-${slot.position}`;
           const isPendingDrop = pendingDropTarget === slotKey;
@@ -1267,7 +1280,7 @@ function GroupCard({
                 className={`min-w-0 flex-1 truncate text-xs ${
                   isEmpty
                     ? "italic text-slate-600"
-                    : mercSlots[slot.position]
+                    : isMercenary
                       ? "text-amber-300"
                       : "text-slate-200"
                 }`}
@@ -1276,9 +1289,7 @@ function GroupCard({
                   ? "Assigning..."
                   : isEmpty
                     ? "Empty"
-                    : mercSlots[slot.position]
-                      ? `[M] ${displayPlayer}`
-                      : displayPlayer}
+                    : displayPlayer}
               </span>
 
               {!isEmpty ? (
@@ -1299,15 +1310,100 @@ function GroupCard({
               {!isEmpty ? (
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    setMercSlots((prev) => ({
-                      ...prev,
-                      [slot.position]: !prev[slot.position],
-                    }));
+
+                    const currentName = slot.playerName;
+                    const nextName = isMercenary
+                      ? stripMercenaryPrefix(currentName)
+                      : withMercenaryPrefix(currentName);
+
+                    if (!nextName) {
+                      return;
+                    }
+
+                    setPending(true);
+                    try {
+                      const currentData = queryClient.getQueryData([
+                        "roster",
+                        sessionId,
+                      ]) as RosterResponse | undefined;
+
+                      if (currentData) {
+                        const updatedGroups =
+                          rosterIndex === 1
+                            ? currentData.roster.groups.map((g) =>
+                                g.groupNumber === group.groupNumber
+                                  ? {
+                                      ...g,
+                                      slots: g.slots.map((s) =>
+                                        s.position === slot.position
+                                          ? { ...s, playerName: nextName }
+                                          : s,
+                                      ),
+                                    }
+                                  : g,
+                              )
+                            : currentData.roster.groups;
+
+                        const updatedSecondGroups =
+                          rosterIndex === 2
+                            ? currentData.roster.secondGroups.map((g) =>
+                                g.groupNumber === group.groupNumber
+                                  ? {
+                                      ...g,
+                                      slots: g.slots.map((s) =>
+                                        s.position === slot.position
+                                          ? { ...s, playerName: nextName }
+                                          : s,
+                                      ),
+                                    }
+                                  : g,
+                              )
+                            : currentData.roster.secondGroups;
+
+                        queryClient.setQueryData(["roster", sessionId], {
+                          ...currentData,
+                          roster: {
+                            ...currentData.roster,
+                            groups: updatedGroups,
+                            secondGroups: updatedSecondGroups,
+                          },
+                        });
+                      }
+
+                      await updateSlot({
+                        sessionId: sessionId ?? undefined,
+                        rosterIndex,
+                        groupNumber: group.groupNumber,
+                        slotPosition: slot.position,
+                        playerName: nextName,
+                        role: slot.role,
+                      });
+
+                      void queryClient.invalidateQueries({
+                        queryKey: ["roster", sessionId],
+                      });
+                      toast.success(
+                        isMercenary
+                          ? "Mercenary removed."
+                          : "Marked as mercenary.",
+                      );
+                    } catch (error) {
+                      void queryClient.invalidateQueries({
+                        queryKey: ["roster", sessionId],
+                      });
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : "Unknown error.",
+                      );
+                    } finally {
+                      setPending(false);
+                    }
                   }}
                   className={`shrink-0 rounded px-1 py-0 text-[9px] font-bold uppercase transition ${
-                    mercSlots[slot.position]
+                    isMercenary
                       ? "bg-amber-500/30 text-amber-400 hover:bg-amber-500/50"
                       : "bg-slate-800 text-slate-600 hover:bg-slate-700 hover:text-slate-400"
                   }`}

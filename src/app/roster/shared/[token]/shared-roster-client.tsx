@@ -220,9 +220,6 @@ function SharedRosterSlotRow({ slot }: { slot: SharedRosterSlot }) {
           : "border-slate-800/80 bg-slate-950/40"
       }`}
     >
-      <span className="w-4 shrink-0 text-center text-[10px] text-slate-500">
-        {slot.position}
-      </span>
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800/90">
         <RoleIcon role={slot.role} />
       </span>
