@@ -46,6 +46,11 @@ type SharedRosterResponse = {
   sharedAt: string;
 };
 
+type SharedGroupsByRoster = {
+  first: SharedRosterGroup[];
+  second: SharedRosterGroup[];
+};
+
 type RoleKey =
   | "tank"
   | "bruiser"
@@ -113,6 +118,59 @@ function normalizeDisplayName(name: string | null) {
   return name.replace(/^\s*\[m\]\s*/i, "").trim() || "Empty";
 }
 
+function buildFilteredGroups(
+  groupsByRoster: SharedGroupsByRoster,
+  rosterFilter: "all" | "1" | "2",
+): SharedGroupsByRoster {
+  if (rosterFilter === "1") {
+    return { first: groupsByRoster.first, second: [] };
+  }
+
+  if (rosterFilter === "2") {
+    return { first: [], second: groupsByRoster.second };
+  }
+
+  return groupsByRoster;
+}
+
+function buildRosterSummary(filteredGroups: SharedGroupsByRoster) {
+  const roleSummary: Record<string, number> = {};
+  let mercenaryCount = 0;
+
+  for (const group of [...filteredGroups.first, ...filteredGroups.second]) {
+    for (const slot of group.slots) {
+      if (!slot.playerName) {
+        continue;
+      }
+
+      const role = normalizeRole(slot.role);
+      const key = role ?? "unknown";
+      roleSummary[key] = (roleSummary[key] ?? 0) + 1;
+
+      if (isMercenaryName(slot.playerName)) {
+        mercenaryCount += 1;
+      }
+    }
+  }
+
+  const totalAssigned = Object.values(roleSummary).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+
+  const orderedSummaryKeys = [
+    ...ROLE_ORDER.filter((role) => (roleSummary[role] ?? 0) > 0),
+    ...(roleSummary.unknown ? ["unknown"] : []),
+  ];
+
+  return {
+    roleSummary,
+    mercenaryCount,
+    totalAssigned,
+    orderedSummaryKeys,
+  };
+}
+
 function RoleIcon({ role }: { role: string | null }) {
   const normalizedRole = normalizeRole(role);
 
@@ -147,6 +205,80 @@ function RoleBadge({ role }: { role: string | null }) {
       />
       {meta.label}
     </span>
+  );
+}
+
+function SharedRosterSlotRow({ slot }: { slot: SharedRosterSlot }) {
+  const isMercenary = isMercenaryName(slot.playerName);
+
+  return (
+    <li
+      key={slot.id}
+      className={`flex items-center gap-2 rounded-md border px-2 py-1 ${
+        isMercenary
+          ? "border-amber-500/35 bg-amber-500/10"
+          : "border-slate-800/80 bg-slate-950/40"
+      }`}
+    >
+      <span className="w-4 shrink-0 text-center text-[10px] text-slate-500">
+        {slot.position}
+      </span>
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800/90">
+        <RoleIcon role={slot.role} />
+      </span>
+      <span
+        className={`min-w-0 flex-1 truncate ${
+          isMercenary ? "text-amber-100" : "text-slate-200"
+        }`}
+      >
+        {normalizeDisplayName(slot.playerName)}
+      </span>
+      {isMercenary ? (
+        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-300">
+          Merc
+        </span>
+      ) : null}
+      <RoleBadge role={slot.role} />
+    </li>
+  );
+}
+
+function SharedRosterSection({
+  title,
+  groups,
+}: {
+  title: string;
+  groups: SharedRosterGroup[];
+}) {
+  if (groups.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+        {title}
+      </h2>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {groups.map((group) => (
+          <article
+            key={group.id}
+            className="rounded-xl border border-slate-800/80 bg-slate-900/75 p-3 shadow-lg shadow-black/20"
+          >
+            <h3 className="text-sm font-semibold text-slate-100 tracking-tight">
+              {group.name ?? `Group ${group.groupNumber}`}
+            </h3>
+            <ul className="mt-2 space-y-1.5 text-xs text-slate-300">
+              {group.slots
+                .sort((a, b) => a.position - b.position)
+                .map((slot) => (
+                  <SharedRosterSlotRow key={slot.id} slot={slot} />
+                ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -205,49 +337,9 @@ export default function SharedRosterClient({ token }: { token: string }) {
       .sort((a, b) => a.groupNumber - b.groupNumber),
   };
 
-  const filteredGroups =
-    rosterFilter === "1"
-      ? { first: groupsByRoster.first, second: [] as SharedRosterGroup[] }
-      : rosterFilter === "2"
-        ? {
-            first: [] as SharedRosterGroup[],
-            second: groupsByRoster.second,
-          }
-        : groupsByRoster;
-
-  const roleSummary: Record<string, number> = {};
-
-  for (const group of [...filteredGroups.first, ...filteredGroups.second]) {
-    for (const slot of group.slots) {
-      if (!slot.playerName) {
-        continue;
-      }
-
-      const role = normalizeRole(slot.role);
-      const key = role ?? "unknown";
-      roleSummary[key] = (roleSummary[key] ?? 0) + 1;
-    }
-  }
-
-  const totalAssigned = Object.values(roleSummary).reduce(
-    (sum, count) => sum + count,
-    0,
-  );
-
-  let mercenaryCount = 0;
-
-  for (const group of [...filteredGroups.first, ...filteredGroups.second]) {
-    for (const slot of group.slots) {
-      if (slot.playerName && isMercenaryName(slot.playerName)) {
-        mercenaryCount += 1;
-      }
-    }
-  }
-
-  const orderedSummaryKeys = [
-    ...ROLE_ORDER.filter((role) => (roleSummary[role] ?? 0) > 0),
-    ...(roleSummary.unknown ? ["unknown"] : []),
-  ];
+  const filteredGroups = buildFilteredGroups(groupsByRoster, rosterFilter);
+  const { roleSummary, mercenaryCount, totalAssigned, orderedSummaryKeys } =
+    buildRosterSummary(filteredGroups);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-6 pb-8 pt-10 text-slate-100">
@@ -354,117 +446,8 @@ export default function SharedRosterClient({ token }: { token: string }) {
           </div>
         </header>
 
-        {filteredGroups.first.length > 0 ? (
-          <section className="space-y-3">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Roster 1
-            </h2>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {filteredGroups.first.map((group) => (
-                <article
-                  key={group.id}
-                  className="rounded-xl border border-slate-800/80 bg-slate-900/75 p-3 shadow-lg shadow-black/20"
-                >
-                  <h3 className="text-sm font-semibold text-slate-100 tracking-tight">
-                    {group.name ?? `Group ${group.groupNumber}`}
-                  </h3>
-                  <ul className="mt-2 space-y-1.5 text-xs text-slate-300">
-                    {group.slots
-                      .sort((a, b) => a.position - b.position)
-                      .map((slot) => (
-                        <li
-                          key={slot.id}
-                          className={`flex items-center gap-2 rounded-md border px-2 py-1 ${
-                            isMercenaryName(slot.playerName)
-                              ? "border-amber-500/35 bg-amber-500/10"
-                              : "border-slate-800/80 bg-slate-950/40"
-                          }`}
-                        >
-                          <span className="w-4 shrink-0 text-center text-[10px] text-slate-500">
-                            {slot.position}
-                          </span>
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800/90">
-                            <RoleIcon role={slot.role} />
-                          </span>
-                          <span
-                            className={`min-w-0 flex-1 truncate ${
-                              isMercenaryName(slot.playerName)
-                                ? "text-amber-100"
-                                : "text-slate-200"
-                            }`}
-                          >
-                            {normalizeDisplayName(slot.playerName)}
-                          </span>
-                          {isMercenaryName(slot.playerName) ? (
-                            <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-300">
-                              Merc
-                            </span>
-                          ) : null}
-                          <RoleBadge role={slot.role} />
-                        </li>
-                      ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {filteredGroups.second.length > 0 ? (
-          <section className="space-y-3">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-              Roster 2
-            </h2>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-              {filteredGroups.second.map((group) => (
-                <article
-                  key={group.id}
-                  className="rounded-xl border border-slate-800/80 bg-slate-900/75 p-3 shadow-lg shadow-black/20"
-                >
-                  <h3 className="text-sm font-semibold text-slate-100 tracking-tight">
-                    {group.name ?? `Group ${group.groupNumber}`}
-                  </h3>
-                  <ul className="mt-2 space-y-1.5 text-xs text-slate-300">
-                    {group.slots
-                      .sort((a, b) => a.position - b.position)
-                      .map((slot) => (
-                        <li
-                          key={slot.id}
-                          className={`flex items-center gap-2 rounded-md border px-2 py-1 ${
-                            isMercenaryName(slot.playerName)
-                              ? "border-amber-500/35 bg-amber-500/10"
-                              : "border-slate-800/80 bg-slate-950/40"
-                          }`}
-                        >
-                          <span className="w-4 shrink-0 text-center text-[10px] text-slate-500">
-                            {slot.position}
-                          </span>
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800/90">
-                            <RoleIcon role={slot.role} />
-                          </span>
-                          <span
-                            className={`min-w-0 flex-1 truncate ${
-                              isMercenaryName(slot.playerName)
-                                ? "text-amber-100"
-                                : "text-slate-200"
-                            }`}
-                          >
-                            {normalizeDisplayName(slot.playerName)}
-                          </span>
-                          {isMercenaryName(slot.playerName) ? (
-                            <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-300">
-                              Merc
-                            </span>
-                          ) : null}
-                          <RoleBadge role={slot.role} />
-                        </li>
-                      ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
+        <SharedRosterSection title="Roster 1" groups={filteredGroups.first} />
+        <SharedRosterSection title="Roster 2" groups={filteredGroups.second} />
       </div>
     </div>
   );
