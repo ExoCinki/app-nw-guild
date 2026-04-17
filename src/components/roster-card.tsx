@@ -428,6 +428,187 @@ function RoleIcon({
   );
 }
 
+const ACTION_BUTTON_BASE =
+  "rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:opacity-40";
+
+const ACTION_BUTTON_VARIANTS = {
+  neutral: "border-slate-600/60 bg-slate-800 text-slate-300 hover:bg-slate-700",
+  success:
+    "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500/60 hover:bg-emerald-500/20",
+  info: "border-sky-500/30 bg-sky-500/10 text-sky-400 hover:border-sky-500/60 hover:bg-sky-500/20",
+  primary:
+    "border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:border-indigo-500/60 hover:bg-indigo-500/20",
+  warning:
+    "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:border-amber-500/60 hover:bg-amber-500/20",
+  danger:
+    "border-red-500/30 bg-red-500/10 text-red-400 hover:border-red-500/60 hover:bg-red-500/20",
+  dangerAlt:
+    "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20",
+} as const;
+
+type ActionButtonVariant = keyof typeof ACTION_BUTTON_VARIANTS;
+
+function actionButtonClass(variant: ActionButtonVariant, withIcon = false) {
+  const iconClass = withIcon ? " flex items-center gap-1.5" : "";
+  return `${ACTION_BUTTON_BASE}${iconClass} ${ACTION_BUTTON_VARIANTS[variant]}`;
+}
+
+function RosterSessionToolbar({
+  activeSessionId,
+  sessions,
+  activeSession,
+  activeShareUrl,
+  isCreatingSession,
+  isRenamingSession,
+  isLockingSession,
+  isSharingSession,
+  isDisablingShare,
+  isArchiving,
+  isClearing,
+  isDeletingSession,
+  onSelectSession,
+  onCreateSession,
+  onRenameSession,
+  onToggleLockSession,
+  onShareSession,
+  onDisableShare,
+  onOpenArchiveConfirm,
+  onOpenClearConfirm,
+  onDeleteSession,
+}: {
+  activeSessionId: string | null;
+  sessions: RosterSessionSummary[];
+  activeSession: RosterSessionSummary | null;
+  activeShareUrl: string | null;
+  isCreatingSession: boolean;
+  isRenamingSession: boolean;
+  isLockingSession: boolean;
+  isSharingSession: boolean;
+  isDisablingShare: boolean;
+  isArchiving: boolean;
+  isClearing: boolean;
+  isDeletingSession: boolean;
+  onSelectSession: (sessionId: string | null) => void;
+  onCreateSession: () => void;
+  onRenameSession: () => void;
+  onToggleLockSession: () => void;
+  onShareSession: () => void;
+  onDisableShare: () => void;
+  onOpenArchiveConfirm: () => void;
+  onOpenClearConfirm: () => void;
+  onDeleteSession: () => void;
+}) {
+  return (
+    <div className="flex w-full max-w-[980px] flex-col gap-2 xl:items-end">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-950/40 p-2">
+        <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+          Session
+        </span>
+        <select
+          value={activeSessionId ?? ""}
+          onChange={(event) => onSelectSession(event.target.value || null)}
+          className="min-w-[220px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
+        >
+          {sessions.map((session) => (
+            <option key={session.id} value={session.id}>
+              {session.name ?? "Untitled session"}
+              {session.isLocked ? " (Locked)" : ""}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onCreateSession}
+          disabled={isCreatingSession}
+          className={actionButtonClass("success")}
+          title="Create roster session"
+        >
+          New session
+        </button>
+        <button
+          type="button"
+          onClick={onRenameSession}
+          disabled={!activeSessionId || isRenamingSession}
+          className={actionButtonClass("neutral", true)}
+          title="Rename session"
+        >
+          <FontAwesomeIcon icon={faPencil} className="h-3 w-3" />
+          Rename
+        </button>
+        <button
+          type="button"
+          onClick={onToggleLockSession}
+          disabled={!activeSessionId || isLockingSession}
+          className={actionButtonClass("neutral", true)}
+          title={activeSession?.isLocked ? "Unlock session" : "Lock session"}
+        >
+          <FontAwesomeIcon
+            icon={activeSession?.isLocked ? faLock : faLockOpen}
+            className="h-3 w-3"
+          />
+          {activeSession?.isLocked ? "Locked" : "Open"}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-950/40 p-2">
+        <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+          Actions
+        </span>
+        <button
+          type="button"
+          onClick={onShareSession}
+          disabled={!activeSessionId || isSharingSession}
+          className={actionButtonClass("primary", true)}
+          title="Generate share link"
+        >
+          <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
+          Share
+        </button>
+        {activeShareUrl ? (
+          <button
+            type="button"
+            onClick={onDisableShare}
+            disabled={isDisablingShare}
+            className={actionButtonClass("warning")}
+            title="Disable share link"
+          >
+            Disable share
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onOpenArchiveConfirm}
+          disabled={isArchiving}
+          className={actionButtonClass("info", true)}
+          title="Archive current roster"
+        >
+          <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
+          Archive
+        </button>
+        <button
+          type="button"
+          onClick={onOpenClearConfirm}
+          disabled={isClearing}
+          className={actionButtonClass("danger", true)}
+          title="Clear roster"
+        >
+          <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
+          Clear
+        </button>
+        <button
+          type="button"
+          onClick={onDeleteSession}
+          disabled={!activeSessionId || isDeletingSession}
+          className={actionButtonClass("dangerAlt")}
+          title="Delete session"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 async function fetchRoster(sessionId: string | null): Promise<RosterResponse> {
@@ -1381,6 +1562,21 @@ export function RosterCard() {
     },
   });
 
+  const renameSessionMutation = useMutation({
+    mutationFn: (name: string | null) => {
+      if (!activeSessionId) throw new Error("No roster session selected.");
+      return updateRosterSession(activeSessionId, { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["roster", activeSessionId] });
+      toast.success("Session renamed.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
+    },
+  });
+
   const deleteSessionMutation = useMutation({
     mutationFn: () => {
       if (!activeSessionId) throw new Error("No roster session selected.");
@@ -1809,6 +2005,29 @@ export function RosterCard() {
       return nameA.localeCompare(nameB, "en");
     });
 
+  const mercPlayersCount = Object.values(mercFlags).filter(Boolean).length;
+
+  const allParticipants = participantsQuery.data?.participants ?? [];
+  const roleCounts: Partial<Record<string, number>> = {};
+
+  for (const participant of allParticipants) {
+    const role =
+      resolveParticipantRoleByPreset(participant, selectedImportFilterPreset) ??
+      "__none";
+    roleCounts[role] = (roleCounts[role] ?? 0) + 1;
+  }
+
+  const participantRoleBadges = Object.keys(ROLE_META)
+    .sort(
+      (a, b) => (ROLE_SORT_PRIORITY[a] ?? 99) - (ROLE_SORT_PRIORITY[b] ?? 99),
+    )
+    .filter((role) => (roleCounts[role] ?? 0) > 0)
+    .map((role) => ({
+      role,
+      count: roleCounts[role] ?? 0,
+      meta: ROLE_META[role],
+    }));
+
   const lastRefreshRaw = selectedEventId
     ? (participantsQuery.data?.participantsCachedAt ??
       eventsQuery.data?.eventsCachedAt ??
@@ -1820,6 +2039,26 @@ export function RosterCard() {
   const activeSession =
     sessionsQuery.data?.find((s) => s.id === activeSessionId) ?? null;
   const activeShareUrl = activeSession?.shares?.[0]?.shareUrl ?? null;
+
+  function handleRenameSession() {
+    if (!activeSessionId) {
+      toast.error("No roster session selected.");
+      return;
+    }
+
+    const currentName = activeSession?.name ?? "";
+    const nextName = window.prompt("Rename session", currentName);
+
+    if (nextName === null) {
+      return;
+    }
+
+    renameSessionMutation.mutate(nextName.trim() || null);
+  }
+
+  function handleToggleLockSession() {
+    lockSessionMutation.mutate(!Boolean(activeSession?.isLocked));
+  }
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
@@ -1912,96 +2151,32 @@ export function RosterCard() {
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <h2 className="text-xl font-semibold text-slate-100">Roster</h2>
-        <div className="flex items-center gap-2">
-          <select
-            value={activeSessionId ?? ""}
-            onChange={(event) => setActiveSessionId(event.target.value || null)}
-            className="max-w-[220px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-          >
-            {(sessionsQuery.data ?? []).map((session) => (
-              <option key={session.id} value={session.id}>
-                {session.name ?? "Untitled session"}
-                {session.isLocked ? " (Locked)" : ""}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => createSessionMutation.mutate(undefined)}
-            disabled={createSessionMutation.isPending}
-            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500/60 hover:bg-emerald-500/20 disabled:opacity-40"
-            title="Create roster session"
-          >
-            New session
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              lockSessionMutation.mutate(!Boolean(activeSession?.isLocked))
-            }
-            disabled={!activeSessionId || lockSessionMutation.isPending}
-            className="flex items-center gap-1 rounded-lg border border-slate-600/60 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
-            title={activeSession?.isLocked ? "Unlock session" : "Lock session"}
-          >
-            <FontAwesomeIcon
-              icon={activeSession?.isLocked ? faLock : faLockOpen}
-              className="h-3 w-3"
-            />
-            {activeSession?.isLocked ? "Locked" : "Open"}
-          </button>
-          <button
-            type="button"
-            onClick={() => shareSessionMutation.mutate()}
-            disabled={!activeSessionId || shareSessionMutation.isPending}
-            className="flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:border-indigo-500/60 hover:bg-indigo-500/20 disabled:opacity-40"
-            title="Generate share link"
-          >
-            <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
-            Share
-          </button>
-          {activeShareUrl ? (
-            <button
-              type="button"
-              onClick={() => disableShareMutation.mutate()}
-              disabled={disableShareMutation.isPending}
-              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:border-amber-500/60 hover:bg-amber-500/20 disabled:opacity-40"
-              title="Disable share link"
-            >
-              Disable share
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => deleteSessionMutation.mutate()}
-            disabled={!activeSessionId || deleteSessionMutation.isPending}
-            className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:border-rose-500/60 hover:bg-rose-500/20 disabled:opacity-40"
-            title="Delete session"
-          >
-            Delete
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowArchiveConfirm(true)}
-            disabled={archiveRosterMutation.isPending}
-            className="flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-400 transition hover:border-sky-500/60 hover:bg-sky-500/20 disabled:opacity-40"
-            title="Archive current roster"
-          >
-            <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
-            Archive
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowClearConfirm(true)}
-            disabled={clearRosterMutation.isPending}
-            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition hover:border-red-500/60 hover:bg-red-500/20 disabled:opacity-40"
-            title="Clear roster"
-          >
-            <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-            Clear
-          </button>
-        </div>
+
+        <RosterSessionToolbar
+          activeSessionId={activeSessionId}
+          sessions={sessionsQuery.data ?? []}
+          activeSession={activeSession}
+          activeShareUrl={activeShareUrl}
+          isCreatingSession={createSessionMutation.isPending}
+          isRenamingSession={renameSessionMutation.isPending}
+          isLockingSession={lockSessionMutation.isPending}
+          isSharingSession={shareSessionMutation.isPending}
+          isDisablingShare={disableShareMutation.isPending}
+          isArchiving={archiveRosterMutation.isPending}
+          isClearing={clearRosterMutation.isPending}
+          isDeletingSession={deleteSessionMutation.isPending}
+          onSelectSession={setActiveSessionId}
+          onCreateSession={() => createSessionMutation.mutate(undefined)}
+          onRenameSession={handleRenameSession}
+          onToggleLockSession={handleToggleLockSession}
+          onShareSession={() => shareSessionMutation.mutate()}
+          onDisableShare={() => disableShareMutation.mutate()}
+          onOpenArchiveConfirm={() => setShowArchiveConfirm(true)}
+          onOpenClearConfirm={() => setShowClearConfirm(true)}
+          onDeleteSession={() => deleteSessionMutation.mutate()}
+        />
       </div>
 
       {/* ── Main layout: left = players, right = rosters ─────────────── */}
@@ -2119,64 +2294,34 @@ export function RosterCard() {
                 <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Players
                 </h3>
-                {Object.values(mercFlags).filter(Boolean).length > 0 && (
+                {mercPlayersCount > 0 && (
                   <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
-                    {Object.values(mercFlags).filter(Boolean).length} merc
+                    {mercPlayersCount} merc
                   </span>
                 )}
               </div>
 
               {/* Role counts */}
-              {participantsQuery.isLoading
-                ? null
-                : participantsQuery.isError
-                  ? null
-                  : (participantsQuery.data?.participants.length ?? 0) === 0
-                    ? null
-                    : (() => {
-                        const allParticipants =
-                          participantsQuery.data?.participants ?? [];
-                        const roleCounts: Partial<Record<string, number>> = {};
-                        for (const p of allParticipants) {
-                          const role =
-                            resolveParticipantRoleByPreset(
-                              p,
-                              selectedImportFilterPreset,
-                            ) ?? "__none";
-                          roleCounts[role] = (roleCounts[role] ?? 0) + 1;
-                        }
-                        const orderedRoles = Object.keys(ROLE_META).sort(
-                          (a, b) =>
-                            (ROLE_SORT_PRIORITY[a] ?? 99) -
-                            (ROLE_SORT_PRIORITY[b] ?? 99),
-                        );
-                        const visibleRoles = orderedRoles.filter(
-                          (r) => (roleCounts[r] ?? 0) > 0,
-                        );
-                        if (visibleRoles.length === 0) return null;
-                        return (
-                          <div className="flex flex-wrap gap-1.5 border-b border-slate-800 px-3 py-2">
-                            {visibleRoles.map((roleKey) => {
-                              const meta = ROLE_META[roleKey];
-                              const count = roleCounts[roleKey] ?? 0;
-                              return (
-                                <span
-                                  key={roleKey}
-                                  className="flex items-center gap-1 rounded-full border border-slate-700/60 bg-slate-900/60 px-2 py-0.5 text-xs font-medium"
-                                >
-                                  <FontAwesomeIcon
-                                    icon={meta.icon}
-                                    className={`h-2.5 w-2.5 ${meta.color}`}
-                                  />
-                                  <span className="text-slate-100 tabular-nums">
-                                    {count}
-                                  </span>
-                                </span>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
+              {participantsQuery.isLoading ? null : participantsQuery.isError ? null : (participantsQuery
+                  .data?.participants.length ?? 0) ===
+                0 ? null : participantRoleBadges.length === 0 ? null : (
+                <div className="flex flex-wrap gap-1.5 border-b border-slate-800 px-3 py-2">
+                  {participantRoleBadges.map(({ role, count, meta }) => (
+                    <span
+                      key={role}
+                      className="flex items-center gap-1 rounded-full border border-slate-700/60 bg-slate-900/60 px-2 py-0.5 text-xs font-medium"
+                    >
+                      <FontAwesomeIcon
+                        icon={meta.icon}
+                        className={`h-2.5 w-2.5 ${meta.color}`}
+                      />
+                      <span className="text-slate-100 tabular-nums">
+                        {count}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {participantsQuery.isLoading ? (
                 <div className="px-3 py-2">
