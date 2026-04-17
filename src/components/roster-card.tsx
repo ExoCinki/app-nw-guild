@@ -311,6 +311,8 @@ function resolveParticipantRoleClassic(
 }
 
 const EUNA_ALLOWED_FACTIONS = new Set(["syndicate", "covenant", "marauder"]);
+const EUNA_FACTION_OPTIONS = ["syndicate", "covenant", "marauder"] as const;
+const EUNA_OVERRIDE_PREFIX = "euna:";
 
 const EUNA_SPEC_TO_ROLE: Record<string, RoleKey> = {
   caller: "debuff",
@@ -329,6 +331,23 @@ const EUNA_SPEC_TO_ROLE: Record<string, RoleKey> = {
   musket: "dps",
 };
 
+const EUNA_SPEC_LABELS: Record<string, string> = {
+  caller: "Caller",
+  tank: "Tank",
+  bruiser: "Bruiser",
+  igvg: "IG/VG",
+  healeraoe: "Healer AOE",
+  healerquad: "Healer Quad",
+  meleedex: "Melee Dex",
+  voidblade: "Voidblade",
+  healerdex: "Healer Dex",
+  flail: "Flail",
+  crescentwave: "Crescent Wave",
+  firestaff: "Fire Staff",
+  bow: "Bow",
+  musket: "Musket",
+};
+
 function resolveParticipantRoleEuna(
   participant: RaidHelperParticipant,
 ): RoleKey {
@@ -343,6 +362,65 @@ function resolveParticipantRoleEuna(
   }
 
   return EUNA_SPEC_TO_ROLE[specName] ?? null;
+}
+
+function resolveParticipantFactionEuna(participant: RaidHelperParticipant) {
+  const factionName = normalizeRoleToken(participant.className);
+
+  if (!factionName || !EUNA_ALLOWED_FACTIONS.has(factionName)) {
+    return null;
+  }
+
+  return factionName;
+}
+
+function formatFactionLabel(faction: string | null) {
+  if (!faction) {
+    return "N/A";
+  }
+
+  return faction.charAt(0).toUpperCase() + faction.slice(1);
+}
+
+function parseEunaOverrideToken(value: string | null | undefined) {
+  const raw = value?.trim() ?? "";
+
+  if (!raw.toLowerCase().startsWith(EUNA_OVERRIDE_PREFIX)) {
+    return null;
+  }
+
+  const payload = raw.slice(EUNA_OVERRIDE_PREFIX.length);
+  const [rawFaction = "", rawSpec = ""] = payload.split("|", 2);
+
+  const factionToken = normalizeRoleToken(rawFaction);
+  const specToken = normalizeCompactToken(rawSpec);
+
+  return {
+    factionOverride:
+      factionToken && EUNA_ALLOWED_FACTIONS.has(factionToken)
+        ? factionToken
+        : null,
+    specOverride:
+      specToken && specToken in EUNA_SPEC_TO_ROLE ? specToken : null,
+  };
+}
+
+function buildEunaOverrideToken(
+  factionOverride: string | null | undefined,
+  specOverride: string | null | undefined,
+) {
+  const factionToken = normalizeRoleToken(factionOverride ?? null);
+  const specToken = normalizeCompactToken(specOverride ?? null);
+
+  const nextFaction =
+    factionToken && EUNA_ALLOWED_FACTIONS.has(factionToken) ? factionToken : "";
+  const nextSpec = specToken && specToken in EUNA_SPEC_TO_ROLE ? specToken : "";
+
+  if (!nextFaction && !nextSpec) {
+    return null;
+  }
+
+  return `${EUNA_OVERRIDE_PREFIX}${nextFaction}|${nextSpec}`;
 }
 
 function resolveParticipantRoleByPreset(
@@ -368,7 +446,8 @@ function shouldIncludeParticipantByPreset(
     return true;
   }
 
-  return resolveParticipantRoleEuna(participant) !== null;
+  // In EUNA mode, keep unmatched participants visible and mark them as N/A.
+  return true;
 }
 
 // ─── Roles ────────────────────────────────────────────────────────────────────
@@ -1545,7 +1624,16 @@ export function RosterCard() {
   const [nameOverrides, setNameOverrides] = useState<Record<string, string>>(
     {},
   );
+  const [factionOverrides, setFactionOverrides] = useState<
+    Record<string, string>
+  >({});
+  const [specOverrides, setSpecOverrides] = useState<Record<string, string>>(
+    {},
+  );
   const [mercFlags, setMercFlags] = useState<Record<string, boolean>>({});
+  const [pendingResetKeys, setPendingResetKeys] = useState<
+    Record<string, true>
+  >({});
   const [editingNameKey, setEditingNameKey] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
 
@@ -1830,14 +1918,27 @@ export function RosterCard() {
       };
       const roleOv: Record<string, RoleKey> = {};
       const nameOv: Record<string, string> = {};
+      const factionOv: Record<string, string> = {};
+      const specOv: Record<string, string> = {};
       const mercOv: Record<string, boolean> = {};
       for (const o of json.overrides) {
-        if (o.roleOverride)
-          roleOv[o.participantKey] = o.roleOverride as RoleKey;
+        if (o.roleOverride) {
+          const eunaOverride = parseEunaOverrideToken(o.roleOverride);
+          if (eunaOverride) {
+            if (eunaOverride.factionOverride) {
+              factionOv[o.participantKey] = eunaOverride.factionOverride;
+            }
+            if (eunaOverride.specOverride) {
+              specOv[o.participantKey] = eunaOverride.specOverride;
+            }
+          } else {
+            roleOv[o.participantKey] = o.roleOverride as RoleKey;
+          }
+        }
         if (o.nameOverride) nameOv[o.participantKey] = o.nameOverride;
         if (o.isMerc) mercOv[o.participantKey] = true;
       }
-      return { roleOv, nameOv, mercOv };
+      return { roleOv, nameOv, factionOv, specOv, mercOv };
     },
     enabled: Boolean(guildId && activeSessionId && selectedEventId),
     staleTime: 60 * 1000,
@@ -1849,7 +1950,10 @@ export function RosterCard() {
     if (!overridesQuery.data) return;
     setRoleOverrides(overridesQuery.data.roleOv);
     setNameOverrides(overridesQuery.data.nameOv);
+    setFactionOverrides(overridesQuery.data.factionOv);
+    setSpecOverrides(overridesQuery.data.specOv);
     setMercFlags(overridesQuery.data.mercOv);
+    setPendingResetKeys({});
   }, [overridesQuery.data]);
 
   // Reset overrides when event changes
@@ -1857,7 +1961,10 @@ export function RosterCard() {
     if (!selectedEventId) {
       setRoleOverrides({});
       setNameOverrides({});
+      setFactionOverrides({});
+      setSpecOverrides({});
       setMercFlags({});
+      setPendingResetKeys({});
     }
   }, [selectedEventId]);
 
@@ -1868,14 +1975,26 @@ export function RosterCard() {
       const allKeys = new Set([
         ...Object.keys(roleOverrides),
         ...Object.keys(nameOverrides),
+        ...Object.keys(factionOverrides),
+        ...Object.keys(specOverrides),
         ...Object.keys(mercFlags),
+        ...Object.keys(pendingResetKeys),
       ]);
-      const overrides = Array.from(allKeys).map((k) => ({
-        participantKey: k,
-        nameOverride: nameOverrides[k] ?? null,
-        roleOverride: roleOverrides[k] ?? null,
-        isMerc: mercFlags[k] ?? false,
-      }));
+      const overrides = Array.from(allKeys).map((k) => {
+        const mustReset = Boolean(pendingResetKeys[k]);
+        const eunaRoleOverrideToken = buildEunaOverrideToken(
+          factionOverrides[k],
+          specOverrides[k],
+        );
+        return {
+          participantKey: k,
+          nameOverride: mustReset ? null : (nameOverrides[k] ?? null),
+          roleOverride: mustReset
+            ? null
+            : (eunaRoleOverrideToken ?? roleOverrides[k] ?? null),
+          isMerc: mustReset ? false : (mercFlags[k] ?? false),
+        };
+      });
       try {
         await fetch("/api/roster/participant-overrides", {
           method: "PUT",
@@ -1887,6 +2006,9 @@ export function RosterCard() {
             overrides,
           }),
         });
+        if (Object.keys(pendingResetKeys).length > 0) {
+          setPendingResetKeys({});
+        }
       } catch {
         // silent fail — overrides are non-critical
       }
@@ -1898,8 +2020,71 @@ export function RosterCard() {
     selectedEventId,
     roleOverrides,
     nameOverrides,
+    factionOverrides,
+    specOverrides,
     mercFlags,
+    pendingResetKeys,
   ]);
+
+  function markParticipantOverridesReset(participantKey: string) {
+    setNameOverrides((prev) => {
+      const next = { ...prev };
+      delete next[participantKey];
+      return next;
+    });
+    setRoleOverrides((prev) => {
+      const next = { ...prev };
+      delete next[participantKey];
+      return next;
+    });
+    setFactionOverrides((prev) => {
+      const next = { ...prev };
+      delete next[participantKey];
+      return next;
+    });
+    setSpecOverrides((prev) => {
+      const next = { ...prev };
+      delete next[participantKey];
+      return next;
+    });
+    setMercFlags((prev) => {
+      const next = { ...prev };
+      delete next[participantKey];
+      return next;
+    });
+    setPendingResetKeys((prev) => ({
+      ...prev,
+      [participantKey]: true,
+    }));
+  }
+
+  function resetAllEventOverrides() {
+    const keys = new Set([
+      ...Object.keys(roleOverrides),
+      ...Object.keys(nameOverrides),
+      ...Object.keys(factionOverrides),
+      ...Object.keys(specOverrides),
+      ...Object.keys(mercFlags),
+    ]);
+
+    if (keys.size === 0) {
+      return;
+    }
+
+    setRoleOverrides({});
+    setNameOverrides({});
+    setFactionOverrides({});
+    setSpecOverrides({});
+    setMercFlags({});
+    setPendingResetKeys((prev) => {
+      const next = { ...prev };
+      for (const key of keys) {
+        next[key] = true;
+      }
+      return next;
+    });
+    toast.success("All participant overrides reset for this event.");
+  }
 
   useEffect(() => {
     const source = new EventSource("/api/live-updates");
@@ -2067,6 +2252,26 @@ export function RosterCard() {
 
   const searchQuery = playerSearch.trim().toLowerCase();
 
+  function resolveEffectiveEunaParticipant(
+    participant: RaidHelperParticipant,
+    participantKey: string,
+  ): RaidHelperParticipant {
+    const factionOverride = factionOverrides[participantKey];
+    const specOverride = specOverrides[participantKey];
+
+    const effectiveFaction =
+      factionOverride ?? normalizeRoleToken(participant.className) ?? null;
+    const effectiveSpec = specOverride
+      ? (EUNA_SPEC_LABELS[specOverride] ?? specOverride)
+      : (participant.specName ?? null);
+
+    return {
+      ...participant,
+      className: effectiveFaction,
+      specName: effectiveSpec,
+    };
+  }
+
   const sortedParticipants = [...(participantsQuery.data?.participants ?? [])]
     .filter((p) => {
       const key = p.name?.trim() || p.userId?.trim();
@@ -2081,12 +2286,22 @@ export function RosterCard() {
       return true;
     })
     .sort((a, b) => {
+      const keyA = a.userId ?? a.name ?? "";
+      const keyB = b.userId ?? b.name ?? "";
+      const effectiveA =
+        selectedImportFilterPreset === "euna"
+          ? resolveEffectiveEunaParticipant(a, keyA)
+          : a;
+      const effectiveB =
+        selectedImportFilterPreset === "euna"
+          ? resolveEffectiveEunaParticipant(b, keyB)
+          : b;
       const roleA = resolveParticipantRoleByPreset(
-        a,
+        effectiveA,
         selectedImportFilterPreset,
       );
       const roleB = resolveParticipantRoleByPreset(
-        b,
+        effectiveB,
         selectedImportFilterPreset,
       );
       const priorityA = roleA ? (ROLE_SORT_PRIORITY[roleA] ?? 99) : 99;
@@ -2107,9 +2322,16 @@ export function RosterCard() {
   const roleCounts: Partial<Record<string, number>> = {};
 
   for (const participant of allParticipants) {
+    const participantKey = participant.userId ?? participant.name ?? "";
+    const effectiveParticipant =
+      selectedImportFilterPreset === "euna"
+        ? resolveEffectiveEunaParticipant(participant, participantKey)
+        : participant;
     const role =
-      resolveParticipantRoleByPreset(participant, selectedImportFilterPreset) ??
-      "__none";
+      resolveParticipantRoleByPreset(
+        effectiveParticipant,
+        selectedImportFilterPreset,
+      ) ?? "__none";
     roleCounts[role] = (roleCounts[role] ?? 0) + 1;
   }
 
@@ -2135,6 +2357,12 @@ export function RosterCard() {
   const activeSession =
     sessionsQuery.data?.find((s) => s.id === activeSessionId) ?? null;
   const activeShareUrl = activeSession?.shares?.[0]?.shareUrl ?? null;
+  const hasAnyEventOverride =
+    Object.keys(roleOverrides).length > 0 ||
+    Object.keys(nameOverrides).length > 0 ||
+    Object.keys(factionOverrides).length > 0 ||
+    Object.keys(specOverrides).length > 0 ||
+    Object.keys(mercFlags).length > 0;
 
   function handleRenameSession() {
     if (!activeSessionId) {
@@ -2287,7 +2515,7 @@ export function RosterCard() {
                   className="h-4 w-4 shrink-0 text-sky-400"
                 />
                 <span className="text-sm font-medium text-slate-200">
-                  RaidHelper event
+                  RaidHelper Event
                 </span>
               </div>
               <button
@@ -2390,11 +2618,22 @@ export function RosterCard() {
                 <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Players
                 </h3>
-                {mercPlayersCount > 0 && (
-                  <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
-                    {mercPlayersCount} merc
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {mercPlayersCount > 0 && (
+                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
+                      {mercPlayersCount} mercs
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={resetAllEventOverrides}
+                    disabled={!hasAnyEventOverride}
+                    className="rounded border border-slate-700/70 px-2 py-0.5 text-[10px] font-medium text-slate-300 transition hover:border-sky-500/60 hover:text-sky-300 disabled:opacity-40"
+                    title="Reset all participant overrides for this event"
+                  >
+                    Reset All Overrides
+                  </button>
+                </div>
               </div>
 
               {/* Role counts */}
@@ -2456,11 +2695,21 @@ export function RosterCard() {
                           participant.userId ??
                           participant.name ??
                           `idx-${index}`;
+                        const effectiveParticipant =
+                          selectedImportFilterPreset === "euna"
+                            ? resolveEffectiveEunaParticipant(
+                                participant,
+                                participantKey,
+                              )
+                            : participant;
+                        const eunaFaction =
+                          resolveParticipantFactionEuna(effectiveParticipant);
                         const resolvedRole = resolveParticipantRoleByPreset(
-                          participant,
+                          effectiveParticipant,
                           selectedImportFilterPreset,
                         );
                         const overriddenRole =
+                          selectedImportFilterPreset !== "euna" &&
                           participantKey in roleOverrides
                             ? roleOverrides[participantKey]
                             : resolvedRole;
@@ -2468,13 +2717,35 @@ export function RosterCard() {
                           nameOverrides[participantKey] ??
                           participant.name ??
                           "No name";
+                        const eunaSpecKey = normalizeCompactToken(
+                          effectiveParticipant.specName,
+                        );
+                        const eunaSpecLabel = eunaSpecKey
+                          ? (EUNA_SPEC_LABELS[eunaSpecKey] ??
+                            effectiveParticipant.specName ??
+                            "N/A")
+                          : "N/A";
+                        const hasFactionOverride =
+                          participantKey in factionOverrides;
+                        const hasSpecOverride = participantKey in specOverrides;
+                        const hasAnyPlayerOverride =
+                          participantKey in nameOverrides ||
+                          participantKey in roleOverrides ||
+                          hasFactionOverride ||
+                          hasSpecOverride ||
+                          Boolean(mercFlags[participantKey]) ||
+                          Boolean(pendingResetKeys[participantKey]);
+                        const roleLabel = overriddenRole
+                          ? (ROLE_META[overriddenRole]?.label ?? "N/A")
+                          : "N/A";
+                        const factionLabel = formatFactionLabel(eunaFaction);
                         const isMerc = !!mercFlags[participantKey];
                         const isEditingName = editingNameKey === participantKey;
                         return (
                           <div
                             key={`${participantKey}-${index}`}
                             draggable={!isEditingName}
-                            title={`${displayName}${participant.className ? ` | ${participant.className}` : ""}${participant.specName ? ` | ${participant.specName}` : ""}`}
+                            title={`${displayName}${effectiveParticipant.className ? ` | ${effectiveParticipant.className}` : ""}${effectiveParticipant.specName ? ` | ${effectiveParticipant.specName}` : ""}`}
                             onDragStart={(event) => {
                               if (isEditingName) return;
                               const effectiveName = isMerc
@@ -2485,9 +2756,10 @@ export function RosterCard() {
                                 userId: participant.userId,
                                 specName: overriddenRole
                                   ? null
-                                  : participant.specName,
+                                  : effectiveParticipant.specName,
                                 className:
-                                  overriddenRole ?? participant.className,
+                                  overriddenRole ??
+                                  effectiveParticipant.className,
                               };
                               const serialized = JSON.stringify(payload);
                               event.dataTransfer.setData(
@@ -2561,7 +2833,7 @@ export function RosterCard() {
                                   {displayName}
                                   {nameOverrides[participantKey] && (
                                     <span className="ml-1 text-[9px] text-sky-400">
-                                      (edited)
+                                      (Edited)
                                     </span>
                                   )}
                                 </div>
@@ -2580,27 +2852,131 @@ export function RosterCard() {
                               >
                                 M
                               </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  markParticipantOverridesReset(participantKey);
+                                }}
+                                disabled={!hasAnyPlayerOverride}
+                                className="shrink-0 rounded border border-slate-700/70 px-1 py-0 text-[9px] font-bold uppercase text-slate-400 transition hover:border-sky-500/60 hover:text-sky-300 disabled:opacity-40"
+                                title="Reset all overrides for this player"
+                              >
+                                R
+                              </button>
                             </div>
+                            {selectedImportFilterPreset === "euna" ? (
+                              <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                <span className="inline-flex items-center gap-1">
+                                  <span>Faction: {factionLabel}</span>
+                                  {hasFactionOverride ? (
+                                    <span className="rounded bg-sky-500/20 px-1 py-0 text-[9px] text-sky-300">
+                                      Edited
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                  <span>Role: {eunaSpecLabel}</span>
+                                  {hasSpecOverride ? (
+                                    <span className="rounded bg-sky-500/20 px-1 py-0 text-[9px] text-sky-300">
+                                      Edited
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span>Role Bucket: {roleLabel}</span>
+                              </div>
+                            ) : null}
                             {/* Row 2: role select */}
-                            <select
-                              value={overriddenRole ?? ""}
-                              onChange={(e) => {
-                                const val = e.target.value as RoleKey;
-                                setRoleOverrides((prev) => ({
-                                  ...prev,
-                                  [participantKey]: val || null,
-                                }));
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="w-full rounded border border-slate-700 bg-slate-800 py-0.5 pl-1 pr-4 text-[10px] text-slate-300 outline-none focus:border-sky-500"
-                            >
-                              <option value="">— role —</option>
-                              {Object.entries(ROLE_META).map(([key, meta]) => (
-                                <option key={key} value={key}>
-                                  {meta.label}
-                                </option>
-                              ))}
-                            </select>
+                            {selectedImportFilterPreset === "euna" ? (
+                              <div className="grid grid-cols-2 gap-1">
+                                <select
+                                  value={
+                                    factionOverrides[participantKey] ??
+                                    normalizeRoleToken(participant.className) ??
+                                    ""
+                                  }
+                                  onChange={(e) => {
+                                    const val = normalizeRoleToken(
+                                      e.target.value,
+                                    );
+                                    setFactionOverrides((prev) => {
+                                      const next = { ...prev };
+                                      if (!val) {
+                                        delete next[participantKey];
+                                      } else {
+                                        next[participantKey] = val;
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-full rounded border border-slate-700 bg-slate-800 py-0.5 pl-1 pr-4 text-[10px] text-slate-300 outline-none focus:border-sky-500"
+                                >
+                                  <option value="">Faction N/A</option>
+                                  {EUNA_FACTION_OPTIONS.map((faction) => (
+                                    <option key={faction} value={faction}>
+                                      {formatFactionLabel(faction)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={
+                                    specOverrides[participantKey] ??
+                                    normalizeCompactToken(
+                                      participant.specName,
+                                    ) ??
+                                    ""
+                                  }
+                                  onChange={(e) => {
+                                    const val = normalizeCompactToken(
+                                      e.target.value,
+                                    );
+                                    setSpecOverrides((prev) => {
+                                      const next = { ...prev };
+                                      if (!val) {
+                                        delete next[participantKey];
+                                      } else {
+                                        next[participantKey] = val;
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-full rounded border border-slate-700 bg-slate-800 py-0.5 pl-1 pr-4 text-[10px] text-slate-300 outline-none focus:border-sky-500"
+                                >
+                                  <option value="">Role N/A</option>
+                                  {Object.entries(EUNA_SPEC_LABELS).map(
+                                    ([specKey, specLabel]) => (
+                                      <option key={specKey} value={specKey}>
+                                        {specLabel}
+                                      </option>
+                                    ),
+                                  )}
+                                </select>
+                              </div>
+                            ) : (
+                              <select
+                                value={overriddenRole ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value as RoleKey;
+                                  setRoleOverrides((prev) => ({
+                                    ...prev,
+                                    [participantKey]: val || null,
+                                  }));
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full rounded border border-slate-700 bg-slate-800 py-0.5 pl-1 pr-4 text-[10px] text-slate-300 outline-none focus:border-sky-500"
+                              >
+                                <option value="">— role —</option>
+                                {Object.entries(ROLE_META).map(
+                                  ([key, meta]) => (
+                                    <option key={key} value={key}>
+                                      {meta.label}
+                                    </option>
+                                  ),
+                                )}
+                              </select>
+                            )}
                           </div>
                         );
                       })
@@ -2695,98 +3071,159 @@ export function RosterCard() {
 
       {/* Legend */}
       <div className="mt-6 border-t border-slate-800 pt-4">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faShield}
-                className="h-3 w-3 text-blue-400"
-              />
-              Tank
+        {selectedImportFilterPreset === "euna" ? (
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              EUNA Legend
+            </h4>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Faction
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-200">
+                  Syndicate
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Faction
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-200">
+                  Covenant
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Faction
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-200">
+                  Marauder
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Fallback
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-400">
+                  Faction N/A • Role N/A
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(EUNA_SPEC_TO_ROLE).map(
+                ([specKey, mappedRole]) => (
+                  <span
+                    key={specKey}
+                    className="inline-flex items-center gap-1 rounded-full border border-slate-700/70 bg-slate-900/60 px-2 py-1 text-[11px] text-slate-300"
+                  >
+                    <span>{EUNA_SPEC_LABELS[specKey] ?? specKey}</span>
+                    <span className="text-slate-500">-&gt;</span>
+                    <span className="text-slate-100">
+                      {mappedRole
+                        ? (ROLE_META[mappedRole]?.label ?? "N/A")
+                        : "N/A"}
+                    </span>
+                  </span>
+                ),
+              )}
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faHammer}
-                className="h-3 w-3 text-rose-400"
-              />
-              Bruiser
+        ) : (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faShield}
+                  className="h-3 w-3 text-blue-400"
+                />
+                Tank
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faHammer}
+                  className="h-3 w-3 text-rose-400"
+                />
+                Bruiser
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faCrosshairs}
+                  className="h-3 w-3 text-red-400"
+                />
+                DPS
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faPlus}
+                  className="h-3 w-3 text-emerald-400"
+                />
+                Heal
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faBiohazard}
+                  className="h-3 w-3 text-violet-400"
+                />
+                Debuff
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faBolt}
+                  className="h-3 w-3 text-amber-400"
+                />
+                Dex
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faHourglassHalf}
+                  className="h-3 w-3 text-yellow-400"
+                />
+                Late
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faCircleQuestion}
+                  className="h-3 w-3 text-slate-400"
+                />
+                Tentative
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faMinus}
+                  className="h-3 w-3 text-slate-500"
+                />
+                Bench
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
+                <FontAwesomeIcon
+                  icon={faUser}
+                  className="h-3 w-3 text-slate-600"
+                />
+                Unassigned
+              </div>
             </div>
           </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faCrosshairs}
-                className="h-3 w-3 text-red-400"
-              />
-              DPS
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faPlus}
-                className="h-3 w-3 text-emerald-400"
-              />
-              Heal
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faBiohazard}
-                className="h-3 w-3 text-violet-400"
-              />
-              Debuff
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faBolt}
-                className="h-3 w-3 text-amber-400"
-              />
-              Dex
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faHourglassHalf}
-                className="h-3 w-3 text-yellow-400"
-              />
-              Late
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faCircleQuestion}
-                className="h-3 w-3 text-slate-400"
-              />
-              Tentative
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faMinus}
-                className="h-3 w-3 text-slate-500"
-              />
-              Bench
-            </div>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-200">
-              <FontAwesomeIcon
-                icon={faUser}
-                className="h-3 w-3 text-slate-600"
-              />
-              Non assigné
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
