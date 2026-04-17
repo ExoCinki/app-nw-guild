@@ -316,7 +316,7 @@ const EUNA_FACTION_OPTIONS = ["syndicate", "covenant", "marauder"] as const;
 const EUNA_OVERRIDE_PREFIX = "euna:";
 
 const EUNA_SPEC_TO_ROLE: Record<string, RoleKey> = {
-  caller: "debuff",
+  caller: "tank",
   tank: "tank",
   bruiser: "bruiser",
   igvg: "debuff",
@@ -2741,14 +2741,6 @@ export function RosterCard() {
                           nameOverrides[participantKey] ??
                           participant.name ??
                           "No name";
-                        const eunaSpecKey = normalizeCompactToken(
-                          effectiveParticipant.specName,
-                        );
-                        const eunaSpecLabel = eunaSpecKey
-                          ? (EUNA_SPEC_LABELS[eunaSpecKey] ??
-                            effectiveParticipant.specName ??
-                            "N/A")
-                          : "N/A";
                         const hasFactionOverride =
                           participantKey in factionOverrides;
                         const hasSpecOverride = participantKey in specOverrides;
@@ -2759,10 +2751,6 @@ export function RosterCard() {
                           hasSpecOverride ||
                           Boolean(mercFlags[participantKey]) ||
                           Boolean(pendingResetKeys[participantKey]);
-                        const roleLabel = overriddenRole
-                          ? (ROLE_META[overriddenRole]?.label ?? "N/A")
-                          : "N/A";
-                        const factionLabel = formatFactionLabel(eunaFaction);
                         const isMerc = !!mercFlags[participantKey];
                         const isEditingName = editingNameKey === participantKey;
                         return (
@@ -2889,17 +2877,6 @@ export function RosterCard() {
                                 R
                               </button>
                             </div>
-                            {selectedImportFilterPreset === "euna" ? (
-                              <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                                <span className="inline-flex items-center gap-1">
-                                  <span>Faction: {factionLabel}</span>
-                                </span>
-                                <span className="inline-flex items-center gap-1">
-                                  <span>Role: {eunaSpecLabel}</span>
-                                </span>
-                                <span>Role Bucket: {roleLabel}</span>
-                              </div>
-                            ) : null}
                             {/* Row 2: role select */}
                             {selectedImportFilterPreset === "euna" ? (
                               <div className="grid grid-cols-2 gap-1">
