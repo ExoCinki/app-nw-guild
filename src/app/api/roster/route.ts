@@ -6,6 +6,7 @@ import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { hasGuildScopeAccess, type GuildAccessMode } from "@/lib/admin-access";
 import { publishLiveUpdate } from "@/lib/live-updates";
 import { withApiTiming } from "@/lib/api-timing";
+import { resolveRosterSession } from "@/lib/roster-session";
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +121,51 @@ function normalizePlayerKey(value: string | null | undefined) {
     return value?.trim().toLowerCase() ?? "";
 }
 
+function mapRosterResponse(input: {
+    guildId: string;
+    guildName: string | null;
+    enableSecondRoster: boolean;
+    dbRoster: {
+        selectedEventId?: string | null;
+        groups: Array<{
+            rosterIndex: number;
+            groupNumber: number;
+            name: string | null;
+            slots: Array<{
+                position: number;
+                playerName: string | null;
+                role: string | null;
+            }>;
+        }>;
+    } | null;
+    rosterSession: {
+        id: string;
+        name: string | null;
+        status: string;
+        isLocked: boolean;
+        lockedByUserId: string | null;
+    };
+}) {
+    return {
+        guild: { id: input.guildId, name: input.guildName },
+        rosterSession: {
+            id: input.rosterSession.id,
+            name: input.rosterSession.name,
+            status: input.rosterSession.status,
+            isLocked: input.rosterSession.isLocked,
+            lockedByUserId: input.rosterSession.lockedByUserId,
+        },
+        roster: {
+            selectedEventId: input.dbRoster?.selectedEventId ?? null,
+            enableSecondRoster: input.enableSecondRoster,
+            groups: buildNormalizedRoster(input.dbRoster, PRIMARY_ROSTER_INDEX),
+            secondGroups: input.enableSecondRoster
+                ? buildNormalizedRoster(input.dbRoster, SECONDARY_ROSTER_INDEX)
+                : [],
+        },
+    };
+}
+
 export async function GET(request: Request) {
     const session = await getServerSession(authOptions);
 
@@ -129,6 +175,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const requestedGuildId = url.searchParams.get("guildId");
+    const rosterSessionId = url.searchParams.get("sessionId");
 
     const resolved = await resolveGuildForUser(session.user.email, requestedGuildId, "read");
 
@@ -136,11 +183,22 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
     const [dbRoster, guildConfiguration] = await withApiTiming(
         "GET /api/roster",
         () => Promise.all([
             prisma.roster.findUnique({
-                where: { discordGuildId: resolved.guildId },
+                where: { id: rosterSession.id },
                 select: {
                     selectedEventId: true,
                     groups: {
@@ -164,17 +222,15 @@ export async function GET(request: Request) {
 
     const enableSecondRoster = guildConfiguration?.enableSecondRoster ?? false;
 
-    return NextResponse.json({
-        guild: { id: resolved.guildId, name: resolved.guildName },
-        roster: {
-            selectedEventId: dbRoster?.selectedEventId ?? null,
+    return NextResponse.json(
+        mapRosterResponse({
+            guildId: resolved.guildId,
+            guildName: resolved.guildName,
             enableSecondRoster,
-            groups: buildNormalizedRoster(dbRoster, PRIMARY_ROSTER_INDEX),
-            secondGroups: enableSecondRoster
-                ? buildNormalizedRoster(dbRoster, SECONDARY_ROSTER_INDEX)
-                : [],
-        },
-    });
+            dbRoster,
+            rosterSession,
+        }),
+    );
 }
 
 export async function POST(request: Request) {
@@ -186,6 +242,7 @@ export async function POST(request: Request) {
 
     const payload = (await request.json()) as {
         guildId?: string;
+        sessionId?: string;
         rosterIndex?: number;
         groupNumber: number;
         name?: string | null;
@@ -207,10 +264,7 @@ export async function POST(request: Request) {
         );
     }
 
-    if (
-        !Array.isArray(payload.slots) ||
-        payload.slots.length !== SLOT_COUNT
-    ) {
+    if (!Array.isArray(payload.slots) || payload.slots.length !== SLOT_COUNT) {
         return NextResponse.json(
             { error: `slots must contain exactly ${SLOT_COUNT} entries` },
             { status: 400 },
@@ -225,6 +279,24 @@ export async function POST(request: Request) {
 
     if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+    }
+
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId: payload.sessionId ?? null,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
+    if (rosterSession.isLocked && rosterSession.lockedByUserId && rosterSession.lockedByUserId !== resolved.userId) {
+        return NextResponse.json(
+            { error: "This roster session is locked by another user" },
+            { status: 403 },
+        );
     }
 
     const rosterIndex = payload.rosterIndex ?? PRIMARY_ROSTER_INDEX;
@@ -250,14 +322,6 @@ export async function POST(request: Request) {
         );
     }
 
-    // Upsert roster
-    const roster = await prisma.roster.upsert({
-        where: { discordGuildId: resolved.guildId },
-        create: { discordGuildId: resolved.guildId },
-        update: {},
-        select: { id: true },
-    });
-
     const otherRosterIndex =
         rosterIndex === PRIMARY_ROSTER_INDEX
             ? SECONDARY_ROSTER_INDEX
@@ -267,7 +331,7 @@ export async function POST(request: Request) {
         "POST /api/roster conflict-check",
         () => prisma.rosterGroup.findMany({
             where: {
-                rosterId: roster.id,
+                rosterId: rosterSession.id,
                 rosterIndex: otherRosterIndex,
             },
             select: {
@@ -305,17 +369,16 @@ export async function POST(request: Request) {
         );
     }
 
-    // Upsert group
     const group = await prisma.rosterGroup.upsert({
         where: {
             rosterId_rosterIndex_groupNumber: {
-                rosterId: roster.id,
+                rosterId: rosterSession.id,
                 rosterIndex,
                 groupNumber: payload.groupNumber,
             },
         },
         create: {
-            rosterId: roster.id,
+            rosterId: rosterSession.id,
             rosterIndex,
             groupNumber: payload.groupNumber,
             name: (payload.name ?? "").trim() || null,
@@ -326,7 +389,6 @@ export async function POST(request: Request) {
         select: { id: true },
     });
 
-    // Upsert all slots
     await withApiTiming("POST /api/roster slots-upsert", () =>
         Promise.all(
             payload.slots.map((slot) =>
@@ -352,10 +414,9 @@ export async function POST(request: Request) {
         ),
     );
 
-    // Return full updated roster
     const dbRoster = await withApiTiming("POST /api/roster reload", () =>
         prisma.roster.findUnique({
-            where: { discordGuildId: resolved.guildId },
+            where: { id: rosterSession.id },
             select: {
                 selectedEventId: true,
                 groups: {
@@ -374,17 +435,15 @@ export async function POST(request: Request) {
 
     publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
 
-    return NextResponse.json({
-        guild: { id: resolved.guildId, name: resolved.guildName },
-        roster: {
-            selectedEventId: dbRoster?.selectedEventId ?? null,
+    return NextResponse.json(
+        mapRosterResponse({
+            guildId: resolved.guildId,
+            guildName: resolved.guildName,
             enableSecondRoster,
-            groups: buildNormalizedRoster(dbRoster, PRIMARY_ROSTER_INDEX),
-            secondGroups: enableSecondRoster
-                ? buildNormalizedRoster(dbRoster, SECONDARY_ROSTER_INDEX)
-                : [],
-        },
-    });
+            dbRoster,
+            rosterSession,
+        }),
+    );
 }
 
 export async function PATCH(request: Request) {
@@ -396,6 +455,7 @@ export async function PATCH(request: Request) {
 
     const payload = (await request.json()) as {
         guildId?: string;
+        sessionId?: string;
         selectedEventId?: string | null;
     };
 
@@ -409,14 +469,28 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId: payload.sessionId ?? null,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
+    if (rosterSession.isLocked && rosterSession.lockedByUserId && rosterSession.lockedByUserId !== resolved.userId) {
+        return NextResponse.json(
+            { error: "This roster session is locked by another user" },
+            { status: 403 },
+        );
+    }
+
     const roster = await withApiTiming("PATCH /api/roster", () =>
-        prisma.roster.upsert({
-            where: { discordGuildId: resolved.guildId },
-            create: {
-                discordGuildId: resolved.guildId,
-                selectedEventId: (payload.selectedEventId ?? "").trim() || null,
-            },
-            update: {
+        prisma.roster.update({
+            where: { id: rosterSession.id },
+            data: {
                 selectedEventId: (payload.selectedEventId ?? "").trim() || null,
             },
             select: {
@@ -444,17 +518,15 @@ export async function PATCH(request: Request) {
 
     publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
 
-    return NextResponse.json({
-        guild: { id: resolved.guildId, name: resolved.guildName },
-        roster: {
-            selectedEventId: roster.selectedEventId ?? null,
+    return NextResponse.json(
+        mapRosterResponse({
+            guildId: resolved.guildId,
+            guildName: resolved.guildName,
             enableSecondRoster,
-            groups: buildNormalizedRoster(roster, PRIMARY_ROSTER_INDEX),
-            secondGroups: enableSecondRoster
-                ? buildNormalizedRoster(roster, SECONDARY_ROSTER_INDEX)
-                : [],
-        },
-    });
+            dbRoster: roster,
+            rosterSession,
+        }),
+    );
 }
 
 export async function DELETE(request: Request) {
@@ -466,6 +538,7 @@ export async function DELETE(request: Request) {
 
     const url = new URL(request.url);
     const requestedGuildId = url.searchParams.get("guildId");
+    const rosterSessionId = url.searchParams.get("sessionId");
 
     const resolved = await resolveGuildForUser(session.user.email, requestedGuildId, "write");
 
@@ -473,12 +546,29 @@ export async function DELETE(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
-    // Vide tous les slots (playerName + role) sans supprimer les groupes
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
+    if (rosterSession.isLocked && rosterSession.lockedByUserId && rosterSession.lockedByUserId !== resolved.userId) {
+        return NextResponse.json(
+            { error: "This roster session is locked by another user" },
+            { status: 403 },
+        );
+    }
+
     await withApiTiming("DELETE /api/roster clear-slots", () =>
         prisma.rosterSlot.updateMany({
             where: {
                 group: {
-                    roster: { discordGuildId: resolved.guildId },
+                    rosterId: rosterSession.id,
                 },
             },
             data: { playerName: null, role: null },
@@ -489,7 +579,7 @@ export async function DELETE(request: Request) {
         "DELETE /api/roster reload",
         () => Promise.all([
             prisma.roster.findUnique({
-                where: { discordGuildId: resolved.guildId },
+                where: { id: rosterSession.id },
                 select: {
                     selectedEventId: true,
                     groups: {
@@ -515,15 +605,13 @@ export async function DELETE(request: Request) {
 
     publishLiveUpdate({ topic: "roster", guildId: resolved.guildId });
 
-    return NextResponse.json({
-        guild: { id: resolved.guildId, name: resolved.guildName },
-        roster: {
-            selectedEventId: dbRoster?.selectedEventId ?? null,
+    return NextResponse.json(
+        mapRosterResponse({
+            guildId: resolved.guildId,
+            guildName: resolved.guildName,
             enableSecondRoster,
-            groups: buildNormalizedRoster(dbRoster ?? null, PRIMARY_ROSTER_INDEX),
-            secondGroups: enableSecondRoster
-                ? buildNormalizedRoster(dbRoster ?? null, SECONDARY_ROSTER_INDEX)
-                : [],
-        },
-    });
+            dbRoster: dbRoster ?? null,
+            rosterSession,
+        }),
+    );
 }

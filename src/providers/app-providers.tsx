@@ -16,7 +16,9 @@ type AppProvidersProps = {
 export function AppProviders({ children }: AppProvidersProps) {
   const [queryClient] = useState(() => createAppQueryClient());
   const pathname = usePathname();
-  const shouldHideNavbar = pathname.startsWith("/payout/shared/");
+  const shouldHideNavbar =
+    pathname.startsWith("/payout/shared/") ||
+    pathname.startsWith("/roster/shared/");
 
   return (
     <SessionProvider>

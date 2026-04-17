@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { publishLiveUpdate } from "@/lib/live-updates";
 import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
+import { resolveRosterSession } from "@/lib/roster-session";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export const POST = apiHandler("POST /api/scoreboard/import-roster", async (requ
         sessionId: string;
         guildId?: string;
         rosterIndex?: 1 | 2 | "all";
+        rosterSessionId?: string;
     };
 
     if (!payload.sessionId) {
@@ -35,8 +37,19 @@ export const POST = apiHandler("POST /api/scoreboard/import-roster", async (requ
         return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const roster = await prisma.roster.findUnique({
-        where: { discordGuildId: guild.resolved.guildId },
+    const rosterSession = await resolveRosterSession({
+        guildId: guild.resolved.guildId,
+        userId: guild.resolved.userId,
+        rosterSessionId: payload.rosterSessionId ?? null,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "No roster session found" }, { status: 404 });
+    }
+
+    const roster = await prisma.roster.findFirst({
+        where: { id: rosterSession.id, discordGuildId: guild.resolved.guildId },
         include: { groups: { include: { slots: true } } },
     });
 

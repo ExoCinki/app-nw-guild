@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { withApiTiming } from "@/lib/api-timing";
-
-type RosterUpsertCreateInput = Parameters<typeof prisma.roster.upsert>[0]["create"];
-type ParticipantsCacheInput = RosterUpsertCreateInput["raidHelperParticipantsCache"];
-type EventsCacheInput = RosterUpsertCreateInput["raidHelperEventsCache"];
+import { resolveRosterSession } from "@/lib/roster-session";
 
 export const dynamic = "force-dynamic";
 
@@ -177,10 +175,10 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const requestedGuildId = url.searchParams.get("guildId");
+    const rosterSessionId = url.searchParams.get("sessionId");
     const eventId = url.searchParams.get("eventId");
     const forceRefresh = parseRefreshFlag(url.searchParams.get("refresh"));
 
-    // Resolve user + selected guild
     const user = await prisma.user.findUnique({
         where: { email: session.user.email },
         select: { id: true },
@@ -211,8 +209,6 @@ export async function GET(request: Request) {
 
     let hasAccess = Boolean(manageableGuilds?.some((g) => g.id === guildId));
 
-    // Fallback: si le token Discord est indisponible, on autorise la guilde
-    // selectionnee si elle est dans la whitelist (couvre events ET participants).
     if (!hasAccess && !manageableGuilds) {
         const isSelectedGuild = selectedGuild?.discordGuildId === guildId;
 
@@ -244,7 +240,6 @@ export async function GET(request: Request) {
         );
     }
 
-    // Load server configuration
     const config = await prisma.guildConfiguration.findUnique({
         where: { discordGuildId: guildId },
         select: { apiKey: true, channelId: true },
@@ -257,8 +252,6 @@ export async function GET(request: Request) {
         );
     }
 
-    const apiKey = config.apiKey;
-
     if (!config.channelId) {
         return NextResponse.json(
             { error: "No channel ID configured for this server." },
@@ -266,8 +259,19 @@ export async function GET(request: Request) {
         );
     }
 
+    const rosterSession = await resolveRosterSession({
+        guildId,
+        userId: user.id,
+        rosterSessionId,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
     const rosterCache = await prisma.roster.findUnique({
-        where: { discordGuildId: guildId },
+        where: { id: rosterSession.id },
         select: {
             raidHelperEventsCache: true,
             raidHelperParticipantsCache: true,
@@ -358,20 +362,15 @@ export async function GET(request: Request) {
         const mergedParticipantsCache = {
             ...existingParticipantsCache,
             [eventId]: participants,
-        } as unknown as ParticipantsCacheInput;
+        };
 
         const participantsCachedAt = new Date();
 
-        await withApiTiming("GET /api/raid-helper-events participants-cache-upsert", () =>
-            prisma.roster.upsert({
-                where: { discordGuildId: guildId },
-                create: {
-                    discordGuildId: guildId,
-                    raidHelperParticipantsCache: mergedParticipantsCache,
-                    raidHelperParticipantsCachedAt: participantsCachedAt,
-                },
-                update: {
-                    raidHelperParticipantsCache: mergedParticipantsCache,
+        await withApiTiming("GET /api/raid-helper-events participants-cache-update", () =>
+            prisma.roster.update({
+                where: { id: rosterSession.id },
+                data: {
+                    raidHelperParticipantsCache: mergedParticipantsCache as Prisma.InputJsonValue,
                     raidHelperParticipantsCachedAt: participantsCachedAt,
                 },
             }),
@@ -395,13 +394,12 @@ export async function GET(request: Request) {
         }
     }
 
-    // Call RaidHelper API
     const rhRes = await withApiTiming("GET /api/raid-helper-events events-fetch", () =>
         fetch(
             `https://raid-helper.xyz/api/v4/servers/${guildId}/events`,
             {
                 headers: {
-                    Authorization: apiKey,
+                    Authorization: config.apiKey as string,
                 },
                 cache: "no-store",
             },
@@ -424,28 +422,19 @@ export async function GET(request: Request) {
 
     const allEvents = rhData.postedEvents ?? [];
 
-    // Filter by configured channel
     const filtered = allEvents.filter(
         (event) => event.channelId === config.channelId,
     );
 
-    // Sort by startTime ascending
     filtered.sort((a, b) => a.startTime - b.startTime);
-
-    const filteredEventsCache = filtered as unknown as EventsCacheInput;
 
     const eventsCachedAt = new Date();
 
-    await withApiTiming("GET /api/raid-helper-events events-cache-upsert", () =>
-        prisma.roster.upsert({
-            where: { discordGuildId: guildId },
-            create: {
-                discordGuildId: guildId,
-                raidHelperEventsCache: filteredEventsCache,
-                raidHelperEventsCachedAt: eventsCachedAt,
-            },
-            update: {
-                raidHelperEventsCache: filteredEventsCache,
+    await withApiTiming("GET /api/raid-helper-events events-cache-update", () =>
+        prisma.roster.update({
+            where: { id: rosterSession.id },
+            data: {
+                raidHelperEventsCache: filtered as any,
                 raidHelperEventsCachedAt: eventsCachedAt,
             },
         }),

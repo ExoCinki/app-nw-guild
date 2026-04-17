@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { hasGuildScopeAccess } from "@/lib/admin-access";
+import { resolveRosterSession } from "@/lib/roster-session";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,6 @@ async function resolveGuild(
     return { userId: user.id, guildId };
 }
 
-// GET /api/roster/participant-overrides?eventId=xxx
 export async function GET(request: Request) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email)
@@ -65,6 +65,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const eventId = searchParams.get("eventId");
     const guildIdFromQuery = searchParams.get("guildId");
+    const sessionId = searchParams.get("sessionId");
 
     if (!eventId)
         return NextResponse.json({ error: "Missing eventId" }, { status: 400 });
@@ -73,8 +74,19 @@ export async function GET(request: Request) {
     if ("error" in resolved)
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
 
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId: sessionId,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
     const overrides = await prisma.rosterParticipantOverride.findMany({
-        where: { discordGuildId: resolved.guildId, eventId },
+        where: { rosterId: rosterSession.id, discordGuildId: resolved.guildId, eventId },
         select: {
             participantKey: true,
             nameOverride: true,
@@ -86,8 +98,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ overrides });
 }
 
-// PUT /api/roster/participant-overrides
-// Body: { eventId, overrides: { participantKey, nameOverride?, roleOverride?, isMerc? }[] }
 export async function PUT(request: Request) {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email)
@@ -96,6 +106,7 @@ export async function PUT(request: Request) {
     const body = (await request.json()) as {
         eventId?: string;
         guildId?: string;
+        sessionId?: string;
         overrides?: {
             participantKey: string;
             nameOverride?: string | null;
@@ -115,14 +126,31 @@ export async function PUT(request: Request) {
     if ("error" in resolved)
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
 
-    // Upsert all provided overrides, delete ones that are now empty
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId: body.sessionId ?? null,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
+    if (rosterSession.isLocked && rosterSession.lockedByUserId && rosterSession.lockedByUserId !== resolved.userId) {
+        return NextResponse.json(
+            { error: "This roster session is locked by another user" },
+            { status: 403 },
+        );
+    }
+
     await Promise.all(
         body.overrides.map((o) => {
-            const isEmpty =
-                !o.nameOverride && !o.roleOverride && !o.isMerc;
+            const isEmpty = !o.nameOverride && !o.roleOverride && !o.isMerc;
             if (isEmpty) {
                 return prisma.rosterParticipantOverride.deleteMany({
                     where: {
+                        rosterId: rosterSession.id,
                         discordGuildId: resolved.guildId,
                         eventId: body.eventId!,
                         participantKey: o.participantKey,
@@ -131,8 +159,8 @@ export async function PUT(request: Request) {
             }
             return prisma.rosterParticipantOverride.upsert({
                 where: {
-                    discordGuildId_eventId_participantKey: {
-                        discordGuildId: resolved.guildId,
+                    rosterId_eventId_participantKey: {
+                        rosterId: rosterSession.id,
                         eventId: body.eventId!,
                         participantKey: o.participantKey,
                     },
@@ -143,6 +171,7 @@ export async function PUT(request: Request) {
                     isMerc: o.isMerc ?? false,
                 },
                 create: {
+                    rosterId: rosterSession.id,
                     discordGuildId: resolved.guildId,
                     eventId: body.eventId!,
                     participantKey: o.participantKey,

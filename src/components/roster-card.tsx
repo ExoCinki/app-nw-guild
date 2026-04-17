@@ -19,6 +19,9 @@ import {
   faRotateRight,
   faTrash,
   faArchive,
+  faLock,
+  faLockOpen,
+  faShareNodes,
 } from "@fortawesome/free-solid-svg-icons";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -45,6 +48,13 @@ type RosterGroupData = {
 
 type RosterResponse = {
   guild: { id: string; name: string | null };
+  rosterSession: {
+    id: string;
+    name: string | null;
+    status: string;
+    isLocked: boolean;
+    lockedByUserId: string | null;
+  };
   roster: {
     selectedEventId: string | null;
     enableSecondRoster: boolean;
@@ -53,8 +63,19 @@ type RosterResponse = {
   };
 };
 
+type RosterSessionSummary = {
+  id: string;
+  name: string | null;
+  status: string;
+  isLocked: boolean;
+  lockedByUserId: string | null;
+  shares?: Array<{ shareUrl: string; updatedAt: string }>;
+  playersCount?: number;
+};
+
 type PostGroupPayload = {
   guildId?: string;
+  sessionId?: string;
   rosterIndex?: 1 | 2;
   groupNumber: number;
   name: string | null;
@@ -90,6 +111,8 @@ type RaidHelperParticipant = {
   className: string | null;
 };
 
+type RaidHelperImportFilterPreset = "classic" | "euna";
+
 type RaidHelperParticipantsResponse = {
   participants: RaidHelperParticipant[];
   participantsCachedAt?: string | null;
@@ -106,6 +129,15 @@ function normalizeRoleToken(value: string | null) {
   return (
     value?.trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ") ??
     null
+  );
+}
+
+function normalizeCompactToken(value: string | null) {
+  return (
+    value
+      ?.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "") ?? null
   );
 }
 
@@ -155,7 +187,9 @@ function matchesPair(
   );
 }
 
-function resolveParticipantRole(participant: RaidHelperParticipant): RoleKey {
+function resolveParticipantRoleClassic(
+  participant: RaidHelperParticipant,
+): RoleKey {
   const specName = normalizeRoleToken(participant.specName);
   const className = normalizeRoleToken(participant.className);
 
@@ -263,6 +297,67 @@ function resolveParticipantRole(participant: RaidHelperParticipant): RoleKey {
   return null;
 }
 
+const EUNA_ALLOWED_FACTIONS = new Set(["syndicate", "covenant", "marauder"]);
+
+const EUNA_SPEC_TO_ROLE: Record<string, RoleKey> = {
+  caller: "debuff",
+  tank: "tank",
+  bruiser: "bruiser",
+  igvg: "debuff",
+  healeraoe: "heal",
+  healerquad: "heal",
+  meleedex: "dex",
+  voidblade: "dex",
+  healerdex: "heal",
+  flail: "tank",
+  crescentwave: "heal",
+  firestaff: "dps",
+  bow: "dps",
+  musket: "dps",
+};
+
+function resolveParticipantRoleEuna(
+  participant: RaidHelperParticipant,
+): RoleKey {
+  const factionName = normalizeRoleToken(participant.className);
+  if (!factionName || !EUNA_ALLOWED_FACTIONS.has(factionName)) {
+    return null;
+  }
+
+  const specName = normalizeCompactToken(participant.specName);
+  if (!specName) {
+    return null;
+  }
+
+  return EUNA_SPEC_TO_ROLE[specName] ?? null;
+}
+
+function resolveParticipantRoleByPreset(
+  participant: RaidHelperParticipant,
+  preset: RaidHelperImportFilterPreset,
+): RoleKey {
+  if (preset === "euna") {
+    return resolveParticipantRoleEuna(participant);
+  }
+
+  return resolveParticipantRoleClassic(participant);
+}
+
+function resolveParticipantRole(participant: RaidHelperParticipant): RoleKey {
+  return resolveParticipantRoleClassic(participant);
+}
+
+function shouldIncludeParticipantByPreset(
+  participant: RaidHelperParticipant,
+  preset: RaidHelperImportFilterPreset,
+) {
+  if (preset === "classic") {
+    return true;
+  }
+
+  return resolveParticipantRoleEuna(participant) !== null;
+}
+
 // ─── Roles ────────────────────────────────────────────────────────────────────
 
 type RoleKey =
@@ -335,8 +430,9 @@ function RoleIcon({
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
-async function fetchRoster(): Promise<RosterResponse> {
-  const res = await fetch("/api/roster", { credentials: "include" });
+async function fetchRoster(sessionId: string | null): Promise<RosterResponse> {
+  const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const res = await fetch(`/api/roster${suffix}`, { credentials: "include" });
   if (!res.ok) {
     const err = (await res.json().catch(() => null)) as {
       error?: string;
@@ -364,6 +460,7 @@ async function saveGroup(payload: PostGroupPayload): Promise<RosterResponse> {
 
 async function updateSlot(payload: {
   guildId?: string;
+  sessionId?: string;
   rosterIndex: 1 | 2;
   groupNumber: number;
   slotPosition: number;
@@ -401,13 +498,15 @@ async function updateSlot(payload: {
   }>;
 }
 
-async function archiveRoster(): Promise<{
+async function archiveRosterForSession(sessionId: string | null): Promise<{
   success: boolean;
   archiveId: string;
 }> {
   const res = await fetch("/api/roster/archive", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     credentials: "include",
+    body: JSON.stringify({ sessionId: sessionId ?? undefined }),
   });
 
   if (!res.ok) {
@@ -420,8 +519,9 @@ async function archiveRoster(): Promise<{
   return res.json() as Promise<{ success: boolean; archiveId: string }>;
 }
 
-async function clearRoster(): Promise<RosterResponse> {
-  const res = await fetch("/api/roster", {
+async function clearRoster(sessionId: string | null): Promise<RosterResponse> {
+  const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const res = await fetch(`/api/roster${suffix}`, {
     method: "DELETE",
     credentials: "include",
   });
@@ -437,13 +537,18 @@ async function clearRoster(): Promise<RosterResponse> {
 }
 
 async function saveSelectedEventId(
+  sessionId: string | null,
   selectedEventId: string | null,
 ): Promise<RosterResponse> {
-  const res = await fetch("/api/roster", {
+  const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const res = await fetch(`/api/roster${suffix}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ selectedEventId }),
+    body: JSON.stringify({
+      selectedEventId,
+      sessionId: sessionId ?? undefined,
+    }),
   });
 
   if (!res.ok) {
@@ -456,14 +561,20 @@ async function saveSelectedEventId(
   return res.json() as Promise<RosterResponse>;
 }
 
-async function fetchRaidHelperEvents(): Promise<RaidHelperEventsResponse> {
-  return fetchRaidHelperEventsWithMode(false);
+async function fetchRaidHelperEvents(
+  sessionId: string | null,
+): Promise<RaidHelperEventsResponse> {
+  return fetchRaidHelperEventsWithMode(sessionId, false);
 }
 
 async function fetchRaidHelperEventsWithMode(
+  sessionId: string | null,
   forceRefresh: boolean,
 ): Promise<RaidHelperEventsResponse> {
-  const suffix = forceRefresh ? "?refresh=1" : "";
+  const params = new URLSearchParams();
+  if (forceRefresh) params.set("refresh", "1");
+  if (sessionId) params.set("sessionId", sessionId);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
   const res = await fetch(`/api/raid-helper-events${suffix}`, {
     method: "GET",
     credentials: "include",
@@ -479,23 +590,24 @@ async function fetchRaidHelperEventsWithMode(
 }
 
 async function fetchRaidHelperParticipants(
+  sessionId: string | null,
   eventId: string,
 ): Promise<RaidHelperParticipantsResponse> {
-  return fetchRaidHelperParticipantsWithMode(eventId, false);
+  return fetchRaidHelperParticipantsWithMode(sessionId, eventId, false);
 }
 
 async function fetchRaidHelperParticipantsWithMode(
+  sessionId: string | null,
   eventId: string,
   forceRefresh: boolean,
 ): Promise<RaidHelperParticipantsResponse> {
-  const suffix = forceRefresh ? "&refresh=1" : "";
-  const res = await fetch(
-    `/api/raid-helper-events?eventId=${encodeURIComponent(eventId)}${suffix}`,
-    {
-      credentials: "include",
-      cache: "no-store",
-    },
-  );
+  const params = new URLSearchParams({ eventId });
+  if (forceRefresh) params.set("refresh", "1");
+  if (sessionId) params.set("sessionId", sessionId);
+  const res = await fetch(`/api/raid-helper-events?${params.toString()}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
   if (!res.ok) {
     const err = (await res.json().catch(() => null)) as {
       error?: string;
@@ -505,9 +617,109 @@ async function fetchRaidHelperParticipantsWithMode(
   return res.json() as Promise<RaidHelperParticipantsResponse>;
 }
 
+async function fetchRosterSessions(): Promise<RosterSessionSummary[]> {
+  const res = await fetch("/api/roster/sessions", {
+    method: "GET",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to load roster sessions.");
+  }
+  return res.json() as Promise<RosterSessionSummary[]>;
+}
+
+async function createRosterSession(
+  name?: string,
+): Promise<RosterSessionSummary> {
+  const res = await fetch("/api/roster/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to create roster session.");
+  }
+  return res.json() as Promise<RosterSessionSummary>;
+}
+
+async function updateRosterSession(
+  id: string,
+  payload: { name?: string | null; isLocked?: boolean },
+): Promise<RosterSessionSummary> {
+  const res = await fetch(`/api/roster/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to update roster session.");
+  }
+  return res.json() as Promise<RosterSessionSummary>;
+}
+
+async function deleteRosterSession(id: string): Promise<void> {
+  const res = await fetch(`/api/roster/sessions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to delete roster session.");
+  }
+}
+
+async function createRosterShareLink(
+  id: string,
+): Promise<{ shareUrl: string }> {
+  const res = await fetch(
+    `/api/roster/sessions/${encodeURIComponent(id)}/share`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to generate share link.");
+  }
+  return res.json() as Promise<{ shareUrl: string }>;
+}
+
+async function deleteRosterShareLink(id: string): Promise<void> {
+  const res = await fetch(
+    `/api/roster/sessions/${encodeURIComponent(id)}/share`,
+    {
+      method: "DELETE",
+      credentials: "include",
+    },
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to disable share link.");
+  }
+}
+
 // ─── GroupCard ─────────────────────────────────────────────────────────────────
 
 function GroupCard({
+  sessionId,
   rosterIndex,
   group,
   onSaved,
@@ -515,6 +727,7 @@ function GroupCard({
   pendingDropTarget,
   queryClient,
 }: {
+  sessionId: string | null;
   rosterIndex: 1 | 2;
   group: RosterGroupData;
   onSaved: (updated: RosterResponse) => void;
@@ -570,7 +783,7 @@ function GroupCard({
     setPending(true);
     try {
       // Optimistic update: update local cache immediately
-      const currentData = queryClient.getQueryData(["roster"]) as
+      const currentData = queryClient.getQueryData(["roster", sessionId]) as
         | RosterResponse
         | undefined;
       if (currentData && editingSlotPosition !== null) {
@@ -622,11 +835,12 @@ function GroupCard({
             secondGroups: updatedSecondGroups,
           },
         };
-        queryClient.setQueryData(["roster"], updatedData);
+        queryClient.setQueryData(["roster", sessionId], updatedData);
       }
 
       // Send to server with lightweight endpoint
       await updateSlot({
+        sessionId: sessionId ?? undefined,
         rosterIndex,
         groupNumber: group.groupNumber,
         slotPosition: editingSlotPosition!,
@@ -635,7 +849,7 @@ function GroupCard({
       });
 
       // Sync in background without blocking the UI.
-      void queryClient.invalidateQueries({ queryKey: ["roster"] });
+      void queryClient.invalidateQueries({ queryKey: ["roster", sessionId] });
 
       setEditingSlotPosition(null);
       setEditingPlayerName("");
@@ -643,7 +857,7 @@ function GroupCard({
       toast.success("Player added to roster.");
     } catch (error) {
       // Refetch to restore correct state on error
-      queryClient.invalidateQueries({ queryKey: ["roster"] });
+      queryClient.invalidateQueries({ queryKey: ["roster", sessionId] });
       toast.error(error instanceof Error ? error.message : "Unknown error.");
     } finally {
       setPending(false);
@@ -654,6 +868,7 @@ function GroupCard({
     setPending(true);
     try {
       const payload: PostGroupPayload = {
+        sessionId: sessionId ?? undefined,
         rosterIndex,
         groupNumber: group.groupNumber,
         name: localName.trim() || null,
@@ -929,6 +1144,7 @@ function GroupCard({
                       // Optimistic update: remove player immediately
                       const currentData = queryClient.getQueryData([
                         "roster",
+                        sessionId,
                       ]) as RosterResponse | undefined;
                       if (currentData) {
                         const updatedGroups =
@@ -979,11 +1195,15 @@ function GroupCard({
                             secondGroups: updatedSecondGroups,
                           },
                         };
-                        queryClient.setQueryData(["roster"], updatedData);
+                        queryClient.setQueryData(
+                          ["roster", sessionId],
+                          updatedData,
+                        );
                       }
 
                       // Send to server with lightweight endpoint
                       await updateSlot({
+                        sessionId: sessionId ?? undefined,
                         rosterIndex,
                         groupNumber: group.groupNumber,
                         slotPosition: slot.position,
@@ -993,12 +1213,14 @@ function GroupCard({
 
                       // Sync in background without blocking the UI.
                       void queryClient.invalidateQueries({
-                        queryKey: ["roster"],
+                        queryKey: ["roster", sessionId],
                       });
 
                       toast.success("Player removed from roster.");
                     } catch (error) {
-                      queryClient.invalidateQueries({ queryKey: ["roster"] });
+                      queryClient.invalidateQueries({
+                        queryKey: ["roster", sessionId],
+                      });
                       toast.error(
                         error instanceof Error
                           ? error.message
@@ -1028,7 +1250,10 @@ function GroupCard({
 
 export function RosterCard() {
   const queryClient = useQueryClient();
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [selectedImportFilterPreset, setSelectedImportFilterPreset] =
+    useState<RaidHelperImportFilterPreset>("classic");
   const [isRefreshingRaidHelper, setIsRefreshingRaidHelper] =
     useState<boolean>(false);
   const [pendingDropTarget, setPendingDropTarget] = useState<string | null>(
@@ -1047,9 +1272,16 @@ export function RosterCard() {
   const [editingNameKey, setEditingNameKey] = useState<string | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
 
+  const sessionsQuery = useQuery({
+    queryKey: ["roster-sessions"],
+    queryFn: fetchRosterSessions,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["roster"],
-    queryFn: fetchRoster,
+    queryKey: ["roster", activeSessionId],
+    queryFn: () => fetchRoster(activeSessionId),
     staleTime: 2 * 60 * 1000, // Keep data fresh for 2 minutes
     refetchOnWindowFocus: false, // Disabled since we use optimistic updates
     refetchOnReconnect: true, // Only refetch if connection is restored
@@ -1057,8 +1289,8 @@ export function RosterCard() {
   });
 
   const eventsQuery = useQuery({
-    queryKey: ["raid-helper-events"],
-    queryFn: fetchRaidHelperEvents,
+    queryKey: ["raid-helper-events", activeSessionId],
+    queryFn: () => fetchRaidHelperEvents(activeSessionId),
     retry: false,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -1067,9 +1299,14 @@ export function RosterCard() {
   });
 
   const participantsQuery = useQuery({
-    queryKey: ["raid-helper-event-participants", selectedEventId],
-    queryFn: () => fetchRaidHelperParticipants(selectedEventId),
-    enabled: Boolean(selectedEventId),
+    queryKey: [
+      "raid-helper-event-participants",
+      activeSessionId,
+      selectedEventId,
+    ],
+    queryFn: () =>
+      fetchRaidHelperParticipants(activeSessionId, selectedEventId),
+    enabled: Boolean(activeSessionId && selectedEventId),
     retry: false,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -1078,9 +1315,10 @@ export function RosterCard() {
   });
 
   const selectedEventMutation = useMutation({
-    mutationFn: saveSelectedEventId,
+    mutationFn: (eventId: string | null) =>
+      saveSelectedEventId(activeSessionId, eventId),
     onSuccess: (updated) => {
-      queryClient.setQueryData(["roster"], updated);
+      queryClient.setQueryData(["roster", activeSessionId], updated);
       setSelectedEventId(updated.roster.selectedEventId ?? "");
     },
     onError: (error) => {
@@ -1089,13 +1327,13 @@ export function RosterCard() {
   });
 
   function handleGroupSaved(updated: RosterResponse) {
-    queryClient.setQueryData(["roster"], updated);
+    queryClient.setQueryData(["roster", activeSessionId], updated);
   }
 
   const clearRosterMutation = useMutation({
-    mutationFn: clearRoster,
+    mutationFn: () => clearRoster(activeSessionId),
     onSuccess: (updated) => {
-      queryClient.setQueryData(["roster"], updated);
+      queryClient.setQueryData(["roster", activeSessionId], updated);
       toast.success("Roster cleared.");
     },
     onError: (err) => {
@@ -1104,9 +1342,85 @@ export function RosterCard() {
   });
 
   const archiveRosterMutation = useMutation({
-    mutationFn: archiveRoster,
+    mutationFn: () => archiveRosterForSession(activeSessionId),
     onSuccess: () => {
       toast.success("Roster archived successfully.");
+      queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["roster", activeSessionId] });
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
+    },
+  });
+
+  const createSessionMutation = useMutation({
+    mutationFn: (name?: string) => createRosterSession(name),
+    onSuccess: (created) => {
+      setActiveSessionId(created.id);
+      queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["roster", created.id] });
+      toast.success("Roster session created.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
+    },
+  });
+
+  const lockSessionMutation = useMutation({
+    mutationFn: (nextLocked: boolean) => {
+      if (!activeSessionId) throw new Error("No roster session selected.");
+      return updateRosterSession(activeSessionId, { isLocked: nextLocked });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["roster", activeSessionId] });
+      toast.success("Session updated.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
+    },
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: () => {
+      if (!activeSessionId) throw new Error("No roster session selected.");
+      return deleteRosterSession(activeSessionId);
+    },
+    onSuccess: () => {
+      setActiveSessionId(null);
+      queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["roster"] });
+      toast.success("Session deleted.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
+    },
+  });
+
+  const shareSessionMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeSessionId) throw new Error("No roster session selected.");
+      const response = await createRosterShareLink(activeSessionId);
+      await navigator.clipboard.writeText(response.shareUrl);
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
+      toast.success("Share link copied to clipboard.");
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Unknown error.");
+    },
+  });
+
+  const disableShareMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeSessionId) throw new Error("No roster session selected.");
+      await deleteRosterShareLink(activeSessionId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
+      toast.success("Share link disabled.");
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : "Unknown error.");
@@ -1117,16 +1431,23 @@ export function RosterCard() {
     try {
       setIsRefreshingRaidHelper(true);
 
-      const refreshedEvents = await fetchRaidHelperEventsWithMode(true);
-      queryClient.setQueryData(["raid-helper-events"], refreshedEvents);
+      const refreshedEvents = await fetchRaidHelperEventsWithMode(
+        activeSessionId,
+        true,
+      );
+      queryClient.setQueryData(
+        ["raid-helper-events", activeSessionId],
+        refreshedEvents,
+      );
 
       if (selectedEventId) {
         const refreshedParticipants = await fetchRaidHelperParticipantsWithMode(
+          activeSessionId,
           selectedEventId,
           true,
         );
         queryClient.setQueryData(
-          ["raid-helper-event-participants", selectedEventId],
+          ["raid-helper-event-participants", activeSessionId, selectedEventId],
           refreshedParticipants,
         );
       }
@@ -1138,6 +1459,23 @@ export function RosterCard() {
       setIsRefreshingRaidHelper(false);
     }
   }
+
+  useEffect(() => {
+    if (activeSessionId) {
+      return;
+    }
+
+    const firstSession = sessionsQuery.data?.[0];
+    if (firstSession?.id) {
+      setActiveSessionId(firstSession.id);
+    }
+  }, [activeSessionId, sessionsQuery.data]);
+
+  useEffect(() => {
+    if (data?.rosterSession?.id && data.rosterSession.id !== activeSessionId) {
+      setActiveSessionId(data.rosterSession.id);
+    }
+  }, [activeSessionId, data?.rosterSession?.id]);
 
   useEffect(() => {
     const events = eventsQuery.data?.events;
@@ -1163,16 +1501,30 @@ export function RosterCard() {
     ) {
       setSelectedEventId("");
     }
-  }, [data?.roster.selectedEventId, eventsQuery.data?.events, selectedEventId]);
+  }, [
+    data?.roster.selectedEventId,
+    eventsQuery.data?.events,
+    selectedEventId,
+    activeSessionId,
+  ]);
 
   // ── Participant overrides (global via API) ─────────────────────────────────
   const guildId = data?.guild.id ?? null;
 
   const overridesQuery = useQuery({
-    queryKey: ["participant-overrides", guildId, selectedEventId],
+    queryKey: [
+      "participant-overrides",
+      guildId,
+      activeSessionId,
+      selectedEventId,
+    ],
     queryFn: async () => {
+      const params = new URLSearchParams({ eventId: selectedEventId });
+      if (activeSessionId) {
+        params.set("sessionId", activeSessionId);
+      }
       const res = await fetch(
-        `/api/roster/participant-overrides?eventId=${encodeURIComponent(selectedEventId)}`,
+        `/api/roster/participant-overrides?${params.toString()}`,
         { credentials: "include" },
       );
       if (!res.ok) throw new Error("Failed to load overrides");
@@ -1195,7 +1547,7 @@ export function RosterCard() {
       }
       return { roleOv, nameOv, mercOv };
     },
-    enabled: Boolean(guildId && selectedEventId),
+    enabled: Boolean(guildId && activeSessionId && selectedEventId),
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -1219,7 +1571,7 @@ export function RosterCard() {
 
   // Debounced save: push all overrides to API 500ms after last change
   useEffect(() => {
-    if (!guildId || !selectedEventId) return;
+    if (!guildId || !activeSessionId || !selectedEventId) return;
     const timer = setTimeout(async () => {
       const allKeys = new Set([
         ...Object.keys(roleOverrides),
@@ -1237,14 +1589,25 @@ export function RosterCard() {
           method: "PUT",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventId: selectedEventId, overrides }),
+          body: JSON.stringify({
+            eventId: selectedEventId,
+            sessionId: activeSessionId,
+            overrides,
+          }),
         });
       } catch {
         // silent fail — overrides are non-critical
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [guildId, selectedEventId, roleOverrides, nameOverrides, mercFlags]);
+  }, [
+    guildId,
+    activeSessionId,
+    selectedEventId,
+    roleOverrides,
+    nameOverrides,
+    mercFlags,
+  ]);
 
   useEffect(() => {
     const source = new EventSource("/api/live-updates");
@@ -1261,6 +1624,7 @@ export function RosterCard() {
           queryClient.invalidateQueries({
             queryKey: ["participant-overrides"],
           });
+          queryClient.invalidateQueries({ queryKey: ["roster-sessions"] });
         }
       } catch {
         // Ignore malformed SSE messages.
@@ -1299,9 +1663,10 @@ export function RosterCard() {
 
     try {
       // Optimistic update
-      const currentData = queryClient.getQueryData(["roster"]) as
-        | RosterResponse
-        | undefined;
+      const currentData = queryClient.getQueryData([
+        "roster",
+        activeSessionId,
+      ]) as RosterResponse | undefined;
       if (currentData) {
         const updatedGroups =
           input.rosterIndex === 1
@@ -1351,11 +1716,12 @@ export function RosterCard() {
             secondGroups: updatedSecondGroups,
           },
         };
-        queryClient.setQueryData(["roster"], updatedData);
+        queryClient.setQueryData(["roster", activeSessionId], updatedData);
       }
 
       // Send to server with lightweight endpoint
       await updateSlot({
+        sessionId: activeSessionId ?? undefined,
         rosterIndex: input.rosterIndex,
         groupNumber: input.groupNumber,
         slotPosition: input.slotPosition,
@@ -1364,14 +1730,16 @@ export function RosterCard() {
       });
 
       // Sync in background without blocking the UI.
-      void queryClient.invalidateQueries({ queryKey: ["roster"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["roster", activeSessionId],
+      });
 
       toast.success(
         `Player assigned to roster ${input.rosterIndex}, group ${input.groupNumber}.`,
       );
     } catch (error) {
       // Refetch to restore correct state
-      queryClient.invalidateQueries({ queryKey: ["roster"] });
+      queryClient.invalidateQueries({ queryKey: ["roster", activeSessionId] });
       toast.error(error instanceof Error ? error.message : "Unknown error.");
     } finally {
       setPendingDropTarget(null);
@@ -1411,6 +1779,9 @@ export function RosterCard() {
     .filter((p) => {
       const key = p.name?.trim() || p.userId?.trim();
       if (key && assignedPlayerNames.has(key)) return false;
+      if (!shouldIncludeParticipantByPreset(p, selectedImportFilterPreset)) {
+        return false;
+      }
       if (searchQuery) {
         const name = (p.name ?? p.userId ?? "").toLowerCase();
         return name.includes(searchQuery);
@@ -1418,8 +1789,14 @@ export function RosterCard() {
       return true;
     })
     .sort((a, b) => {
-      const roleA = resolveParticipantRole(a);
-      const roleB = resolveParticipantRole(b);
+      const roleA = resolveParticipantRoleByPreset(
+        a,
+        selectedImportFilterPreset,
+      );
+      const roleB = resolveParticipantRoleByPreset(
+        b,
+        selectedImportFilterPreset,
+      );
       const priorityA = roleA ? (ROLE_SORT_PRIORITY[roleA] ?? 99) : 99;
       const priorityB = roleB ? (ROLE_SORT_PRIORITY[roleB] ?? 99) : 99;
 
@@ -1440,6 +1817,9 @@ export function RosterCard() {
 
   const lastRefreshDisplay = formatRefreshDateTime(lastRefreshRaw);
   const stale = isDataStale(lastRefreshRaw);
+  const activeSession =
+    sessionsQuery.data?.find((s) => s.id === activeSessionId) ?? null;
+  const activeShareUrl = activeSession?.shares?.[0]?.shareUrl ?? null;
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
@@ -1535,6 +1915,72 @@ export function RosterCard() {
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-100">Roster</h2>
         <div className="flex items-center gap-2">
+          <select
+            value={activeSessionId ?? ""}
+            onChange={(event) => setActiveSessionId(event.target.value || null)}
+            className="max-w-[220px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
+          >
+            {(sessionsQuery.data ?? []).map((session) => (
+              <option key={session.id} value={session.id}>
+                {session.name ?? "Untitled session"}
+                {session.isLocked ? " (Locked)" : ""}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => createSessionMutation.mutate(undefined)}
+            disabled={createSessionMutation.isPending}
+            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500/60 hover:bg-emerald-500/20 disabled:opacity-40"
+            title="Create roster session"
+          >
+            New session
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              lockSessionMutation.mutate(!Boolean(activeSession?.isLocked))
+            }
+            disabled={!activeSessionId || lockSessionMutation.isPending}
+            className="flex items-center gap-1 rounded-lg border border-slate-600/60 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-40"
+            title={activeSession?.isLocked ? "Unlock session" : "Lock session"}
+          >
+            <FontAwesomeIcon
+              icon={activeSession?.isLocked ? faLock : faLockOpen}
+              className="h-3 w-3"
+            />
+            {activeSession?.isLocked ? "Locked" : "Open"}
+          </button>
+          <button
+            type="button"
+            onClick={() => shareSessionMutation.mutate()}
+            disabled={!activeSessionId || shareSessionMutation.isPending}
+            className="flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:border-indigo-500/60 hover:bg-indigo-500/20 disabled:opacity-40"
+            title="Generate share link"
+          >
+            <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
+            Share
+          </button>
+          {activeShareUrl ? (
+            <button
+              type="button"
+              onClick={() => disableShareMutation.mutate()}
+              disabled={disableShareMutation.isPending}
+              className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 transition hover:border-amber-500/60 hover:bg-amber-500/20 disabled:opacity-40"
+              title="Disable share link"
+            >
+              Disable share
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => deleteSessionMutation.mutate()}
+            disabled={!activeSessionId || deleteSessionMutation.isPending}
+            className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:border-rose-500/60 hover:bg-rose-500/20 disabled:opacity-40"
+            title="Delete session"
+          >
+            Delete
+          </button>
           <button
             type="button"
             onClick={() => setShowArchiveConfirm(true)}
@@ -1604,27 +2050,42 @@ export function RosterCard() {
                 No event found in this channel.
               </p>
             ) : (
-              <select
-                value={selectedEventId}
-                onChange={(e) => {
-                  const nextValue = e.target.value;
-                  setSelectedEventId(nextValue);
-                  selectedEventMutation.mutate(nextValue || null);
-                }}
-                disabled={selectedEventMutation.isPending}
-                className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
-              >
-                <option value="">-- Select an event --</option>
-                {eventsQuery.data?.events.map((event) => {
-                  const date = new Date(event.startTime * 1000);
-                  const label = `${date.toLocaleDateString("en-US", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} — ${event.title}`;
-                  return (
-                    <option key={event.id} value={event.id}>
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
+              <>
+                <select
+                  value={selectedEventId}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    setSelectedEventId(nextValue);
+                    selectedEventMutation.mutate(nextValue || null);
+                  }}
+                  disabled={selectedEventMutation.isPending}
+                  className="mt-3 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                >
+                  <option value="">-- Select an event --</option>
+                  {eventsQuery.data?.events.map((event) => {
+                    const date = new Date(event.startTime * 1000);
+                    const label = `${date.toLocaleDateString("en-US", { day: "2-digit", month: "2-digit" })} ${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} — ${event.title}`;
+                    return (
+                      <option key={event.id} value={event.id}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <select
+                  value={selectedImportFilterPreset}
+                  onChange={(e) =>
+                    setSelectedImportFilterPreset(
+                      e.target.value as RaidHelperImportFilterPreset,
+                    )
+                  }
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+                >
+                  <option value="classic">Classic</option>
+                  <option value="euna">EUNA</option>
+                </select>
+              </>
             )}
 
             <div
@@ -1677,7 +2138,11 @@ export function RosterCard() {
                           participantsQuery.data?.participants ?? [];
                         const roleCounts: Partial<Record<string, number>> = {};
                         for (const p of allParticipants) {
-                          const role = resolveParticipantRole(p) ?? "__none";
+                          const role =
+                            resolveParticipantRoleByPreset(
+                              p,
+                              selectedImportFilterPreset,
+                            ) ?? "__none";
                           roleCounts[role] = (roleCounts[role] ?? 0) + 1;
                         }
                         const orderedRoles = Object.keys(ROLE_META).sort(
@@ -1750,8 +2215,10 @@ export function RosterCard() {
                           participant.userId ??
                           participant.name ??
                           `idx-${index}`;
-                        const resolvedRole =
-                          resolveParticipantRole(participant);
+                        const resolvedRole = resolveParticipantRoleByPreset(
+                          participant,
+                          selectedImportFilterPreset,
+                        );
                         const overriddenRole =
                           participantKey in roleOverrides
                             ? roleOverrides[participantKey]
@@ -1775,14 +2242,11 @@ export function RosterCard() {
                               const payload: DragParticipantPayload = {
                                 name: effectiveName,
                                 userId: participant.userId,
-                                specName:
-                                  overriddenRole !== resolvedRole
-                                    ? null
-                                    : participant.specName,
+                                specName: overriddenRole
+                                  ? null
+                                  : participant.specName,
                                 className:
-                                  overriddenRole !== resolvedRole
-                                    ? overriddenRole
-                                    : participant.className,
+                                  overriddenRole ?? participant.className,
                               };
                               const serialized = JSON.stringify(payload);
                               event.dataTransfer.setData(
@@ -1918,6 +2382,7 @@ export function RosterCard() {
               {row1.map((group) => (
                 <GroupCard
                   key={`r1-${group.groupNumber}`}
+                  sessionId={activeSessionId}
                   rosterIndex={1}
                   group={group}
                   onSaved={handleGroupSaved}
@@ -1932,6 +2397,7 @@ export function RosterCard() {
               {row2.map((group) => (
                 <GroupCard
                   key={`r1-${group.groupNumber}`}
+                  sessionId={activeSessionId}
                   rosterIndex={1}
                   group={group}
                   onSaved={handleGroupSaved}
@@ -1955,6 +2421,7 @@ export function RosterCard() {
                   {secondRow1.map((group) => (
                     <GroupCard
                       key={`r2-${group.groupNumber}`}
+                      sessionId={activeSessionId}
                       rosterIndex={2}
                       group={group}
                       onSaved={handleGroupSaved}
@@ -1969,6 +2436,7 @@ export function RosterCard() {
                   {secondRow2.map((group) => (
                     <GroupCard
                       key={`r2-${group.groupNumber}`}
+                      sessionId={activeSessionId}
                       rosterIndex={2}
                       group={group}
                       onSaved={handleGroupSaved}

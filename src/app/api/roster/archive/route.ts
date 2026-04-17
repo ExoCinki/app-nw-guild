@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { hasGuildScopeAccess, type GuildAccessMode } from "@/lib/admin-access";
+import { resolveRosterSession } from "@/lib/roster-session";
 
 type RosterArchiveCreateInput = Parameters<typeof prisma.rosterArchive.create>[0]["data"];
 
@@ -56,7 +57,7 @@ async function resolveAdminGuild(
         ownerDiscordId && user.discordId && user.discordId === ownerDiscordId,
     );
 
-    const canAccessRoster = await hasGuildScopeAccess({
+    const canAccessArchives = await hasGuildScopeAccess({
         userId: user.id,
         discordGuildId: guildId,
         scope: "archives",
@@ -64,23 +65,25 @@ async function resolveAdminGuild(
         isOwner,
     });
 
-    if (!canAccessRoster) {
+    if (!canAccessArchives) {
         return { error: "Access denied for archives module on this server", status: 403 as const };
     }
 
-    // Check if user is admin (has admin role => TODO: verify admin status properly)
-    // For now, accepting all who can manage the guild
     return { userId: user.id, guildId, isAdmin: true };
 }
 
-export async function POST() {
+export async function POST(request: Request) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const resolved = await resolveAdminGuild(session.user.email, null, "write");
+    const url = new URL(request.url);
+    const requestedGuildId = url.searchParams.get("guildId");
+    const body = (await request.json().catch(() => ({}))) as { sessionId?: string };
+
+    const resolved = await resolveAdminGuild(session.user.email, requestedGuildId, "write");
 
     if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
@@ -93,10 +96,28 @@ export async function POST() {
         );
     }
 
-    // Get current roster state + selected event
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId: body.sessionId ?? url.searchParams.get("sessionId"),
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
+    if (rosterSession.isLocked && rosterSession.lockedByUserId && rosterSession.lockedByUserId !== resolved.userId) {
+        return NextResponse.json(
+            { error: "This roster session is locked by another user" },
+            { status: 403 },
+        );
+    }
+
     const roster = await prisma.roster.findUnique({
-        where: { discordGuildId: resolved.guildId },
+        where: { id: rosterSession.id },
         select: {
+            id: true,
             selectedEventId: true,
             groups: {
                 select: {
@@ -109,42 +130,42 @@ export async function POST() {
                 },
                 orderBy: [{ rosterIndex: "asc" }, { groupNumber: "asc" }],
             },
+            raidHelperEventsCache: true,
+            name: true,
+            createdAt: true,
+            updatedAt: true,
         },
     });
 
     if (!roster) {
-        return NextResponse.json({ error: "Roster not found" }, { status: 404 });
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
     }
 
-    // Get event title if eventId exists
     let eventTitle: string | null = null;
 
-    if (roster.selectedEventId) {
-        // Try to get the event from cache
-        const rosterWithCache = await prisma.roster.findUnique({
-            where: { discordGuildId: resolved.guildId },
-            select: { raidHelperEventsCache: true },
-        });
+    if (roster.selectedEventId && Array.isArray(roster.raidHelperEventsCache)) {
+        const event = (roster.raidHelperEventsCache as unknown[]).find(
+            (e: unknown) => typeof e === "object" && e !== null && (e as Record<string, unknown>).id === roster.selectedEventId,
+        );
 
-        if (rosterWithCache?.raidHelperEventsCache && Array.isArray(rosterWithCache.raidHelperEventsCache)) {
-            const event = (rosterWithCache.raidHelperEventsCache as unknown[]).find(
-                (e: unknown) => typeof e === "object" && e !== null && (e as Record<string, unknown>).id === roster.selectedEventId,
-            );
-
-            if (event && typeof event === "object" && "title" in event && typeof event.title === "string") {
-                eventTitle = event.title;
-            }
+        if (event && typeof event === "object" && "title" in event && typeof event.title === "string") {
+            eventTitle = event.title;
         }
     }
 
-    // Archive the snapshot
     const archive = await prisma.rosterArchive.create({
         data: {
+            rosterId: roster.id,
             discordGuildId: resolved.guildId,
             eventId: roster.selectedEventId ?? null,
-            eventTitle: eventTitle,
+            eventTitle,
             snapshot: roster as unknown as RosterArchiveCreateInput["snapshot"],
         },
+    });
+
+    await prisma.roster.update({
+        where: { id: roster.id },
+        data: { status: "ARCHIVED" },
     });
 
     return NextResponse.json({
@@ -154,14 +175,17 @@ export async function POST() {
     });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.email) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const resolved = await resolveAdminGuild(session.user.email, null, "read");
+    const url = new URL(request.url);
+    const requestedGuildId = url.searchParams.get("guildId");
+
+    const resolved = await resolveAdminGuild(session.user.email, requestedGuildId, "read");
 
     if ("error" in resolved) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
@@ -178,6 +202,7 @@ export async function GET() {
         where: { discordGuildId: resolved.guildId },
         select: {
             id: true,
+            rosterId: true,
             eventId: true,
             eventTitle: true,
             archivedAt: true,

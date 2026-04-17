@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { hasGuildScopeAccess, type GuildAccessMode } from "@/lib/admin-access";
 import { publishLiveUpdate } from "@/lib/live-updates";
+import { resolveRosterSession } from "@/lib/roster-session";
 
 export const dynamic = "force-dynamic";
 
@@ -74,18 +75,9 @@ async function resolveGuildForUser(
         return { error: "Access denied for roster module on this server", status: 403 as const };
     }
 
-    const guildName =
-        manageableGuilds.find((guild) => guild.id === guildId)?.name ?? null;
-
-    return { userId: user.id, guildId, guildName };
+    return { userId: user.id, guildId };
 }
 
-/**
- * PUT /api/roster/slot
- *
- * Lightweight endpoint for updating a single roster slot.
- * Returns only the modified slot, not the entire roster.
- */
 export async function PUT(request: Request) {
     const session = await getServerSession(authOptions);
 
@@ -95,6 +87,7 @@ export async function PUT(request: Request) {
 
     const payload = (await request.json()) as {
         guildId?: string;
+        sessionId?: string;
         rosterIndex?: number;
         groupNumber: number;
         slotPosition: number;
@@ -102,7 +95,6 @@ export async function PUT(request: Request) {
         role: string | null;
     };
 
-    // Validate groupNumber
     if (!Number.isInteger(payload.groupNumber) || payload.groupNumber < 1 || payload.groupNumber > 10) {
         return NextResponse.json(
             { error: "groupNumber must be between 1 and 10" },
@@ -110,7 +102,6 @@ export async function PUT(request: Request) {
         );
     }
 
-    // Validate slotPosition
     if (!Number.isInteger(payload.slotPosition) || payload.slotPosition < 1 || payload.slotPosition > 5) {
         return NextResponse.json(
             { error: "slotPosition must be between 1 and 5" },
@@ -128,6 +119,24 @@ export async function PUT(request: Request) {
         return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     }
 
+    const rosterSession = await resolveRosterSession({
+        guildId: resolved.guildId,
+        userId: resolved.userId,
+        rosterSessionId: payload.sessionId ?? null,
+        createIfMissing: true,
+    });
+
+    if (!rosterSession) {
+        return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
+    }
+
+    if (rosterSession.isLocked && rosterSession.lockedByUserId && rosterSession.lockedByUserId !== resolved.userId) {
+        return NextResponse.json(
+            { error: "This roster session is locked by another user" },
+            { status: 403 },
+        );
+    }
+
     const rosterIndex = payload.rosterIndex ?? PRIMARY_ROSTER_INDEX;
 
     if (rosterIndex !== PRIMARY_ROSTER_INDEX && rosterIndex !== SECONDARY_ROSTER_INDEX) {
@@ -137,7 +146,6 @@ export async function PUT(request: Request) {
         );
     }
 
-    // Check if second roster is enabled
     const guildConfiguration = await prisma.guildConfiguration.findUnique({
         where: { discordGuildId: resolved.guildId },
         select: { enableSecondRoster: true },
@@ -152,17 +160,6 @@ export async function PUT(request: Request) {
         );
     }
 
-    // Get or create roster
-    const roster = await prisma.roster.findUnique({
-        where: { discordGuildId: resolved.guildId },
-        select: { id: true },
-    });
-
-    if (!roster) {
-        return NextResponse.json({ error: "Roster not found" }, { status: 404 });
-    }
-
-    // If adding a player, check for conflicts in the other roster
     if (payload.playerName?.trim()) {
         const otherRosterIndex =
             rosterIndex === PRIMARY_ROSTER_INDEX
@@ -172,7 +169,7 @@ export async function PUT(request: Request) {
         const conflictingSlot = await prisma.rosterSlot.findFirst({
             where: {
                 group: {
-                    roster: { id: roster.id },
+                    rosterId: rosterSession.id,
                     rosterIndex: otherRosterIndex,
                 },
                 playerName: { not: null },
@@ -188,16 +185,15 @@ export async function PUT(request: Request) {
                 {
                     error: `Player "${payload.playerName}" is already assigned in roster ${otherRosterIndex}`,
                 },
-                { status: 409 }, // Conflict
+                { status: 409 },
             );
         }
     }
 
-    // Get or create the group
     const group = await prisma.rosterGroup.findUnique({
         where: {
             rosterId_rosterIndex_groupNumber: {
-                rosterId: roster.id,
+                rosterId: rosterSession.id,
                 rosterIndex,
                 groupNumber: payload.groupNumber,
             },
@@ -206,10 +202,9 @@ export async function PUT(request: Request) {
     });
 
     if (!group) {
-        // Create the group if it doesn't exist
         const newGroup = await prisma.rosterGroup.create({
             data: {
-                rosterId: roster.id,
+                rosterId: rosterSession.id,
                 rosterIndex,
                 groupNumber: payload.groupNumber,
                 name: null,
@@ -217,7 +212,6 @@ export async function PUT(request: Request) {
             select: { id: true },
         });
 
-        // Create all empty slots
         await Promise.all(
             Array.from({ length: 5 }, (_, i) =>
                 prisma.rosterSlot.create({
@@ -234,7 +228,6 @@ export async function PUT(request: Request) {
             ),
         );
     } else {
-        // Upsert the specific slot (handles missing slots in existing groups)
         await prisma.rosterSlot.upsert({
             where: {
                 groupId_position: {
