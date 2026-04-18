@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faUsers,
   faPlus,
   faTrash,
   faUpload,
@@ -174,7 +173,7 @@ export default function ScoreboardClient() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(
     null,
   );
-  const [newPlayerName, setNewPlayerName] = useState("");
+
   const [sessionSearch, setSessionSearch] = useState("");
   const [historySearch, setHistorySearch] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("sessions");
@@ -619,32 +618,6 @@ export default function ScoreboardClient() {
     onError: (error: Error) => toast.error(error.message),
   });
 
-  const addEntryMutation = useMutation({
-    mutationFn: async (payload: { sessionId: string; playerName: string }) => {
-      const response = await fetch("/api/scoreboard/entries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(payload?.error ?? "Impossible d'ajouter le joueur");
-      }
-
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["scoreboard-sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["scoreboard-history"] });
-      setNewPlayerName("");
-      toast.success("Joueur ajoute");
-    },
-    onError: (error: Error) => toast.error(error.message),
-  });
-
   const updateEntryMutation = useMutation({
     mutationFn: async (payload: {
       entryId: string;
@@ -697,12 +670,32 @@ export default function ScoreboardClient() {
         throw new Error(payload?.error ?? "Suppression impossible");
       }
     },
+    onMutate: async (entryId: string) => {
+      await queryClient.cancelQueries({ queryKey: ["scoreboard-sessions"] });
+      const previous = queryClient.getQueryData<ScoreboardSession[]>([
+        "scoreboard-sessions",
+      ]);
+      queryClient.setQueryData<ScoreboardSession[]>(
+        ["scoreboard-sessions"],
+        (old) =>
+          old?.map((session) => ({
+            ...session,
+            entries: session.entries.filter((e) => e.id !== entryId),
+          })) ?? [],
+      );
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scoreboard-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["scoreboard-history"] });
       toast.success("Joueur retire du scoreboard");
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error: Error, _entryId, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["scoreboard-sessions"], context.previous);
+      }
+      toast.error(error.message);
+    },
   });
 
   const updateSessionMutation = useMutation({
@@ -1052,28 +1045,6 @@ export default function ScoreboardClient() {
                         </p>
                       ) : null}
                     </div>
-
-                    <input
-                      type="text"
-                      value={newPlayerName}
-                      onChange={(event) => setNewPlayerName(event.target.value)}
-                      placeholder="Ajouter un joueur"
-                      className="min-w-[220px] flex-1 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
-                    />
-                    <LoadingButton
-                      isLoading={addEntryMutation.isPending}
-                      onClick={() => {
-                        if (!effectiveSelectedSessionId) return;
-                        addEntryMutation.mutate({
-                          sessionId: effectiveSelectedSessionId,
-                          playerName: newPlayerName,
-                        });
-                      }}
-                      className="rounded-lg border border-emerald-600/40 bg-emerald-500/20 px-3 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/30"
-                    >
-                      <FontAwesomeIcon icon={faUsers} className="h-4 w-4" />
-                      Ajouter
-                    </LoadingButton>
                   </div>
 
                   <div className="mt-4">
