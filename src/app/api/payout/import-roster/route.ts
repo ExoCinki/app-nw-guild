@@ -6,6 +6,105 @@ import { resolveRosterSession } from "@/lib/roster-session";
 
 export const dynamic = "force-dynamic";
 
+type RosterSourceSession = {
+    id: string;
+    name: string | null;
+    status: string;
+    isLocked: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+};
+
+function mapRosterSessionSummary(session: RosterSourceSession) {
+    return {
+        id: session.id,
+        name: session.name,
+        status: session.status,
+        isLocked: session.isLocked,
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+    };
+}
+
+export const GET = apiHandler("GET /api/payout/import-roster", async (request: NextRequest) => {
+    const auth = await requireAuth();
+    if ("response" in auth) return auth.response;
+
+    const guild = await requireGuildAuth(
+        auth.email,
+        request.nextUrl.searchParams.get("guildId"),
+        "payout",
+    );
+    if ("response" in guild) return guild.response;
+
+    const rosterSessions = await prisma.roster.findMany({
+        where: { discordGuildId: guild.resolved.guildId },
+        select: {
+            id: true,
+            name: true,
+            status: true,
+            isLocked: true,
+            createdAt: true,
+            updatedAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+    });
+
+    if (rosterSessions.length === 0) {
+        return NextResponse.json({
+            sessions: [],
+            selectedRosterSessionId: null,
+            roster: null,
+        });
+    }
+
+    const requestedRosterSessionId = request.nextUrl.searchParams.get("rosterSessionId")?.trim() ?? null;
+    const defaultRosterSession = await resolveRosterSession({
+        guildId: guild.resolved.guildId,
+        userId: guild.resolved.userId,
+        createIfMissing: false,
+    });
+
+    const selectedRosterSession =
+        rosterSessions.find((session) => session.id === requestedRosterSessionId) ??
+        rosterSessions.find((session) => session.id === defaultRosterSession?.id) ??
+        rosterSessions[0];
+
+    const roster = await prisma.roster.findFirst({
+        where: {
+            id: selectedRosterSession.id,
+            discordGuildId: guild.resolved.guildId,
+        },
+        select: {
+            id: true,
+            name: true,
+            groups: {
+                select: {
+                    id: true,
+                    rosterIndex: true,
+                    groupNumber: true,
+                    name: true,
+                    slots: {
+                        select: {
+                            id: true,
+                            position: true,
+                            playerName: true,
+                        },
+                        orderBy: { position: "asc" },
+                    },
+                },
+                orderBy: [{ rosterIndex: "asc" }, { groupNumber: "asc" }],
+            },
+        },
+    });
+
+    return NextResponse.json({
+        sessions: rosterSessions.map(mapRosterSessionSummary),
+        selectedRosterSessionId: selectedRosterSession.id,
+        roster,
+    });
+});
+
 export const POST = apiHandler("POST /api/payout/import-roster", async (request: NextRequest) => {
     const auth = await requireAuth();
     if ("response" in auth) return auth.response;

@@ -17,11 +17,6 @@ import {
   faXmark,
   faCalendarDays,
   faRotateRight,
-  faTrash,
-  faArchive,
-  faLock,
-  faLockOpen,
-  faShareNodes,
   faFlag,
   faKhanda,
 } from "@fortawesome/free-solid-svg-icons";
@@ -33,101 +28,24 @@ import {
   InlineLoadingIndicator,
   LoadingIndicator,
 } from "@/components/loading-indicator";
+import { ActionConfirmModal } from "@/components/action-confirm-modal";
+import { RosterSessionToolbar } from "@/components/roster-session-toolbar";
+import type {
+  DragParticipantPayload,
+  ParticipantCountBadge,
+  PostGroupPayload,
+  RaidHelperEventsResponse,
+  RaidHelperImportFilterPreset,
+  RaidHelperParticipant,
+  RaidHelperParticipantsResponse,
+  RoleKey,
+  RosterGroupData,
+  RosterResponse,
+  RosterSlotData,
+  RosterSessionSummary,
+} from "@/components/roster-card.types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type RosterSlotData = {
-  position: number;
-  playerName: string | null;
-  role: string | null;
-};
-
-type RosterGroupData = {
-  groupNumber: number;
-  name: string | null;
-  slots: RosterSlotData[];
-};
-
-type RosterResponse = {
-  guild: { id: string; name: string | null };
-  rosterSession: {
-    id: string;
-    name: string | null;
-    status: string;
-    isLocked: boolean;
-    lockedByUserId: string | null;
-  };
-  roster: {
-    selectedEventId: string | null;
-    selectedImportFilterPreset: RaidHelperImportFilterPreset;
-    playerSearchQuery: string;
-    enableSecondRoster: boolean;
-    groups: RosterGroupData[];
-    secondGroups: RosterGroupData[];
-  };
-};
-
-type RosterSessionSummary = {
-  id: string;
-  name: string | null;
-  status: string;
-  isLocked: boolean;
-  lockedByUserId: string | null;
-  shares?: Array<{ shareUrl: string; updatedAt: string }>;
-  playersCount?: number;
-};
-
-type PostGroupPayload = {
-  guildId?: string;
-  sessionId?: string;
-  rosterIndex?: 1 | 2;
-  groupNumber: number;
-  name: string | null;
-  slots: Array<{
-    position: number;
-    playerName: string | null;
-    role: string | null;
-  }>;
-};
-
-type RaidHelperEvent = {
-  id: string;
-  channelId: string;
-  title: string;
-  startTime: number;
-  endTime: number | null;
-  signUps: number;
-  leaderId: string;
-  leaderName: string | null;
-  description: string | null;
-};
-
-type RaidHelperEventsResponse = {
-  events: RaidHelperEvent[];
-  channelId: string;
-  eventsCachedAt?: string | null;
-};
-
-type RaidHelperParticipant = {
-  name: string | null;
-  userId: string | null;
-  specName: string | null;
-  className: string | null;
-};
-
-type RaidHelperImportFilterPreset = "classic" | "euna";
-
-type RaidHelperParticipantsResponse = {
-  participants: RaidHelperParticipant[];
-  participantsCachedAt?: string | null;
-};
-
-type DragParticipantPayload = {
-  name: string | null;
-  userId: string | null;
-  specName: string | null;
-  className: string | null;
-};
 
 function normalizeRoleToken(value: string | null) {
   return (
@@ -465,26 +383,6 @@ function shouldIncludeParticipantByPreset(
 
 // ─── Roles ────────────────────────────────────────────────────────────────────
 
-type RoleKey =
-  | "tank"
-  | "bruiser"
-  | "dps"
-  | "heal"
-  | "debuff"
-  | "dex"
-  | "late"
-  | "tentative"
-  | "bench"
-  | null;
-
-type ParticipantCountBadge = {
-  key: string;
-  count: number;
-  icon: IconDefinition;
-  color: string;
-  label: string;
-};
-
 const ROLE_META: Record<
   string,
   { label: string; icon: IconDefinition; color: string }
@@ -561,187 +459,6 @@ function FactionIcon({
 
   return (
     <FontAwesomeIcon icon={faFlag} className={`${sizeClass} ${colorClass}`} />
-  );
-}
-
-const ACTION_BUTTON_BASE =
-  "rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:opacity-40";
-
-const ACTION_BUTTON_VARIANTS = {
-  neutral: "border-slate-600/60 bg-slate-800 text-slate-300 hover:bg-slate-700",
-  success:
-    "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500/60 hover:bg-emerald-500/20",
-  info: "border-sky-500/30 bg-sky-500/10 text-sky-400 hover:border-sky-500/60 hover:bg-sky-500/20",
-  primary:
-    "border-indigo-500/30 bg-indigo-500/10 text-indigo-300 hover:border-indigo-500/60 hover:bg-indigo-500/20",
-  warning:
-    "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:border-amber-500/60 hover:bg-amber-500/20",
-  danger:
-    "border-red-500/30 bg-red-500/10 text-red-400 hover:border-red-500/60 hover:bg-red-500/20",
-  dangerAlt:
-    "border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-500/60 hover:bg-rose-500/20",
-} as const;
-
-type ActionButtonVariant = keyof typeof ACTION_BUTTON_VARIANTS;
-
-function actionButtonClass(variant: ActionButtonVariant, withIcon = false) {
-  const iconClass = withIcon ? " flex items-center gap-1.5" : "";
-  return `${ACTION_BUTTON_BASE}${iconClass} ${ACTION_BUTTON_VARIANTS[variant]}`;
-}
-
-function RosterSessionToolbar({
-  activeSessionId,
-  sessions,
-  activeSession,
-  activeShareUrl,
-  isCreatingSession,
-  isRenamingSession,
-  isLockingSession,
-  isSharingSession,
-  isDisablingShare,
-  isArchiving,
-  isClearing,
-  isDeletingSession,
-  onSelectSession,
-  onCreateSession,
-  onRenameSession,
-  onToggleLockSession,
-  onShareSession,
-  onDisableShare,
-  onOpenArchiveConfirm,
-  onOpenClearConfirm,
-  onDeleteSession,
-}: {
-  activeSessionId: string | null;
-  sessions: RosterSessionSummary[];
-  activeSession: RosterSessionSummary | null;
-  activeShareUrl: string | null;
-  isCreatingSession: boolean;
-  isRenamingSession: boolean;
-  isLockingSession: boolean;
-  isSharingSession: boolean;
-  isDisablingShare: boolean;
-  isArchiving: boolean;
-  isClearing: boolean;
-  isDeletingSession: boolean;
-  onSelectSession: (sessionId: string | null) => void;
-  onCreateSession: () => void;
-  onRenameSession: () => void;
-  onToggleLockSession: () => void;
-  onShareSession: () => void;
-  onDisableShare: () => void;
-  onOpenArchiveConfirm: () => void;
-  onOpenClearConfirm: () => void;
-  onDeleteSession: () => void;
-}) {
-  return (
-    <div className="flex w-full max-w-[980px] flex-col gap-2 xl:items-end">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-950/40 p-2">
-        <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          Session
-        </span>
-        <select
-          value={activeSessionId ?? ""}
-          onChange={(event) => onSelectSession(event.target.value || null)}
-          className="min-w-[220px] rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-100"
-        >
-          {sessions.map((session) => (
-            <option key={session.id} value={session.id}>
-              {session.name ?? "Untitled session"}
-              {session.isLocked ? " (Locked)" : ""}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={onCreateSession}
-          disabled={isCreatingSession}
-          className={actionButtonClass("success")}
-          title="Create roster session"
-        >
-          New session
-        </button>
-        <button
-          type="button"
-          onClick={onRenameSession}
-          disabled={!activeSessionId || isRenamingSession}
-          className={actionButtonClass("neutral", true)}
-          title="Rename session"
-        >
-          <FontAwesomeIcon icon={faPencil} className="h-3 w-3" />
-          Rename
-        </button>
-        <button
-          type="button"
-          onClick={onToggleLockSession}
-          disabled={!activeSessionId || isLockingSession}
-          className={actionButtonClass("neutral", true)}
-          title={activeSession?.isLocked ? "Unlock session" : "Lock session"}
-        >
-          <FontAwesomeIcon
-            icon={activeSession?.isLocked ? faLock : faLockOpen}
-            className="h-3 w-3"
-          />
-          {activeSession?.isLocked ? "Locked" : "Open"}
-        </button>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-950/40 p-2">
-        <span className="px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          Actions
-        </span>
-        <button
-          type="button"
-          onClick={onShareSession}
-          disabled={!activeSessionId || isSharingSession}
-          className={actionButtonClass("primary", true)}
-          title="Generate share link"
-        >
-          <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
-          Share
-        </button>
-        {activeShareUrl ? (
-          <button
-            type="button"
-            onClick={onDisableShare}
-            disabled={isDisablingShare}
-            className={actionButtonClass("warning")}
-            title="Disable share link"
-          >
-            Disable share
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={onOpenArchiveConfirm}
-          disabled={isArchiving}
-          className={actionButtonClass("info", true)}
-          title="Archive current roster"
-        >
-          <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
-          Archive
-        </button>
-        <button
-          type="button"
-          onClick={onOpenClearConfirm}
-          disabled={isClearing}
-          className={actionButtonClass("danger", true)}
-          title="Clear roster"
-        >
-          <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-          Clear
-        </button>
-        <button
-          type="button"
-          onClick={onDeleteSession}
-          disabled={!activeSessionId || isDeletingSession}
-          className={actionButtonClass("dangerAlt")}
-          title="Delete session"
-        >
-          Delete
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -2545,94 +2262,35 @@ export function RosterCard() {
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
-      {/* ── Archive confirmation modal ─────────────────────────────────── */}
-      {showArchiveConfirm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-100">
-              Archive roster
-            </h3>
-            <p className="mt-2 text-sm text-slate-400">
-              Current roster will be archived with all assigned players and the
-              configured groups. You will be able to view it in the Archives
-              tab.
-            </p>
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowArchiveConfirm(false)}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={archiveRosterMutation.isPending}
-                onClick={() => {
-                  setShowArchiveConfirm(false);
-                  archiveRosterMutation.mutate();
-                }}
-                className="flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-50"
-              >
-                {archiveRosterMutation.isPending ? (
-                  <>
-                    <LoadingIndicator /> Archiving...
-                  </>
-                ) : (
-                  <>
-                    <FontAwesomeIcon icon={faArchive} className="h-3 w-3" />
-                    Archive
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ActionConfirmModal
+        isOpen={showArchiveConfirm}
+        title="Archive roster"
+        description="Current roster will be archived with all assigned players and the configured groups. You will be able to view it in the Archives tab."
+        confirmLabel="Archive"
+        confirmButtonClassName="bg-sky-600 hover:bg-sky-500"
+        isPending={archiveRosterMutation.isPending}
+        pendingLabel="Archiving..."
+        onCancel={() => setShowArchiveConfirm(false)}
+        onConfirm={() => {
+          setShowArchiveConfirm(false);
+          archiveRosterMutation.mutate();
+        }}
+      />
 
-      {/* ── Clear confirmation modal ──────────────────────────────────── */}
-      {showClearConfirm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-            <h3 className="text-base font-semibold text-slate-100">
-              Clear roster
-            </h3>
-            <p className="mt-2 text-sm text-slate-400">
-              All players assigned to groups will be removed. This action is
-              irreversible.
-            </p>
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowClearConfirm(false)}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300 transition hover:bg-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={clearRosterMutation.isPending}
-                onClick={() => {
-                  setShowClearConfirm(false);
-                  clearRosterMutation.mutate();
-                }}
-                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-500 disabled:opacity-50"
-              >
-                {clearRosterMutation.isPending ? (
-                  <>
-                    <LoadingIndicator /> Clearing...
-                  </>
-                ) : (
-                  <>
-                    <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
-                    Clear
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ActionConfirmModal
+        isOpen={showClearConfirm}
+        title="Clear roster"
+        description="All players assigned to groups will be removed. This action is irreversible."
+        confirmLabel="Clear"
+        confirmButtonClassName="bg-red-600 hover:bg-red-500"
+        isPending={clearRosterMutation.isPending}
+        pendingLabel="Clearing..."
+        onCancel={() => setShowClearConfirm(false)}
+        onConfirm={() => {
+          setShowClearConfirm(false);
+          clearRosterMutation.mutate();
+        }}
+      />
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <h2 className="text-xl font-semibold text-slate-100">Roster</h2>
