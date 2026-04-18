@@ -109,13 +109,25 @@ export const authOptions: NextAuthOptions = {
                     where: { id: user.id },
                     data,
                 });
-                return;
-            }
-
-            if (user.email) {
+            } else if (user.email) {
                 await prisma.user.updateMany({
                     where: { email: user.email },
                     data,
+                });
+            }
+
+            // Update OAuth tokens on every sign-in so they never go stale.
+            if (account.providerAccountId) {
+                await prisma.account.updateMany({
+                    where: {
+                        provider: "discord",
+                        providerAccountId: account.providerAccountId,
+                    },
+                    data: {
+                        access_token: account.access_token ?? null,
+                        refresh_token: account.refresh_token ?? null,
+                        expires_at: account.expires_at ?? null,
+                    },
                 });
             }
         },

@@ -113,6 +113,12 @@ export function ProfileCard() {
     },
   });
 
+  const needsReauth =
+    whitelistedGuildsQuery.isError &&
+    whitelistedGuildsQuery.error instanceof ApiError &&
+    whitelistedGuildsQuery.error.status === 401 &&
+    whitelistedGuildsQuery.error.message === "No Discord token found";
+
   const isConnected = status === "authenticated";
   const user = meQuery.data?.user;
   const guilds = useMemo(
@@ -150,13 +156,11 @@ export function ProfileCard() {
   useEffect(() => {
     if (whitelistedGuildsQuery.isError) {
       const err = whitelistedGuildsQuery.error;
-      // Discord OAuth tokens expired — force re-authentication silently
       if (
         err instanceof ApiError &&
         err.status === 401 &&
         err.message === "No Discord token found"
       ) {
-        void signIn("discord");
         return;
       }
       const message =
@@ -223,6 +227,23 @@ export function ProfileCard() {
             {meQuery.isError ? (
               <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
                 Unable to load profile. Try again in a few seconds.
+              </div>
+            ) : null}
+
+            {needsReauth ? (
+              <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
+                <p className="mb-2 text-sm text-amber-300">
+                  Your Discord session has expired. Please reconnect to restore access.
+                </p>
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-lg bg-sky-500 px-3 py-1.5 text-sm font-medium text-slate-950 transition hover:bg-sky-400"
+                  onClick={async () => {
+                    await signIn("discord");
+                  }}
+                >
+                  Reconnect with Discord
+                </button>
               </div>
             ) : null}
 
