@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
@@ -382,6 +383,19 @@ export async function POST(request: Request) {
     });
 
     const { roles, rolesError } = await getDiscordGuildRoles(resolved.guildId);
+
+    if (hasChannelIds || hasChannelId) {
+        const newSerialized = serializeIdList(channelIds);
+        if (newSerialized !== (existing?.channelId ?? null)) {
+            await prisma.roster.updateMany({
+                where: { discordGuildId: resolved.guildId },
+                data: {
+                    raidHelperEventsCache: Prisma.DbNull,
+                    raidHelperEventsCachedAt: null,
+                },
+            });
+        }
+    }
 
     const savedChannelIds = parseIdListFromString(saved.channelId);
     const savedRoleIds = parseIdListFromString(saved.zooMemberRoleId);

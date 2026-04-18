@@ -366,6 +366,11 @@ export function ServerConfigurationCard() {
       const data = await saveMutation.mutateAsync(payload);
       queryClient.setQueryData(["server-configuration"], data);
       syncFromConfigurationData(data);
+      if (field === "channelIds") {
+        await queryClient.invalidateQueries({
+          queryKey: ["raid-helper-events"],
+        });
+      }
       setEditingField(null);
       toast.success("Configuration saved.");
     } catch (error) {
