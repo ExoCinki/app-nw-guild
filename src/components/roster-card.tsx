@@ -903,31 +903,6 @@ async function saveSelectedImportFilterPreset(
   return res.json() as Promise<RosterResponse>;
 }
 
-async function saveSelectedPlayerSearchQuery(
-  sessionId: string | null,
-  selectedPlayerSearchQuery: string,
-): Promise<RosterResponse> {
-  const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
-  const res = await fetch(`/api/roster${suffix}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      selectedPlayerSearchQuery,
-      sessionId: sessionId ?? undefined,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = (await res.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(err?.error ?? "Unable to save player search query.");
-  }
-
-  return res.json() as Promise<RosterResponse>;
-}
-
 async function fetchRaidHelperEvents(
   sessionId: string | null,
 ): Promise<RaidHelperEventsResponse> {
@@ -1700,8 +1675,8 @@ function GroupCard({
 
 export function RosterCard() {
   const queryClient = useQueryClient();
-  const lastSyncedPlayerSearchRef = useRef("");
-  const lastSyncedSessionIdRef = useRef<string | null>(null);
+  const localPlayerSearchBySessionRef = useRef<Record<string, string>>({});
+  const lastPlayerSearchSessionRef = useRef<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [selectedImportFilterPreset, setSelectedImportFilterPreset] =
@@ -1793,17 +1768,6 @@ export function RosterCard() {
     onSuccess: (updated) => {
       queryClient.setQueryData(["roster", activeSessionId], updated);
       setSelectedImportFilterPreset(updated.roster.selectedImportFilterPreset);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Unknown error.");
-    },
-  });
-
-  const selectedPlayerSearchQueryMutation = useMutation({
-    mutationFn: (query: string) =>
-      saveSelectedPlayerSearchQuery(activeSessionId, query),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(["roster", activeSessionId], updated);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Unknown error.");
@@ -1997,58 +1961,23 @@ export function RosterCard() {
       return;
     }
 
-    const currentSessionId = data.rosterSession.id;
-    const persistedSearchQuery = data.roster.playerSearchQuery ?? "";
-
-    if (lastSyncedSessionIdRef.current !== currentSessionId) {
-      lastSyncedSessionIdRef.current = currentSessionId;
-      lastSyncedPlayerSearchRef.current = persistedSearchQuery;
-      setPlayerSearch(persistedSearchQuery);
+    if (lastPlayerSearchSessionRef.current === activeSessionId) {
       return;
     }
 
-    if (persistedSearchQuery === playerSearch) {
-      lastSyncedPlayerSearchRef.current = persistedSearchQuery;
-      return;
-    }
-
-    // Avoid overriding local typing: only sync when local value is still the last synced value.
-    if (playerSearch === lastSyncedPlayerSearchRef.current) {
-      lastSyncedPlayerSearchRef.current = persistedSearchQuery;
-      setPlayerSearch(persistedSearchQuery);
-    }
-  }, [
-    activeSessionId,
-    data?.roster.playerSearchQuery,
-    data?.rosterSession.id,
-    playerSearch,
-  ]);
+    lastPlayerSearchSessionRef.current = activeSessionId;
+    setPlayerSearch(
+      localPlayerSearchBySessionRef.current[activeSessionId] ?? "",
+    );
+  }, [activeSessionId, data?.rosterSession.id]);
 
   useEffect(() => {
-    if (!activeSessionId || data?.rosterSession.id !== activeSessionId) {
+    if (!activeSessionId) {
       return;
     }
 
-    const persistedSearchQuery = data.roster.playerSearchQuery ?? "";
-
-    if (playerSearch === persistedSearchQuery) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      selectedPlayerSearchQueryMutation.mutate(playerSearch);
-    }, 300);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [
-    activeSessionId,
-    data?.roster.playerSearchQuery,
-    data?.rosterSession.id,
-    playerSearch,
-    selectedPlayerSearchQueryMutation,
-  ]);
+    localPlayerSearchBySessionRef.current[activeSessionId] = playerSearch;
+  }, [activeSessionId, playerSearch]);
 
   useEffect(() => {
     const events = eventsQuery.data?.events;
