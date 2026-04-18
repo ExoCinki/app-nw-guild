@@ -44,6 +44,7 @@ export default function PayoutClient() {
 
   const {
     currentUserId,
+    loadingCurrentUserAccess,
     sessions,
     loadingSessions,
     guildConfig,
@@ -160,7 +161,7 @@ export default function PayoutClient() {
     deleteSessionMutation,
   });
 
-  if (loadingSessions) {
+  if (loadingCurrentUserAccess || loadingSessions) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
         <div className="mb-6 h-9 w-64 animate-pulse rounded bg-slate-800" />

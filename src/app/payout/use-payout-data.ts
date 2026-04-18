@@ -34,7 +34,7 @@ export function usePayoutData({
 }) {
     const queryClient = useQueryClient();
 
-    const { data: currentUserAccess } = useQuery({
+    const { data: currentUserAccess, isLoading: loadingCurrentUserAccess } = useQuery({
         queryKey: ["current-user-access"],
         queryFn: async () => {
             const res = await fetch("/api/me");
@@ -573,6 +573,7 @@ export function usePayoutData({
         currentUserId,
         selectedGuildId,
         sessions,
+        loadingCurrentUserAccess,
         loadingSessions,
         guildConfig,
         rosterSource,
