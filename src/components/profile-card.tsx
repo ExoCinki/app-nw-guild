@@ -10,7 +10,7 @@ import {
   LoadingIndicator,
 } from "@/components/loading-indicator";
 import { queryPresets } from "@/lib/query-presets";
-import { apiFetch, apiFetchVoid } from "@/lib/http-client";
+import { apiFetch, apiFetchVoid, ApiError } from "@/lib/http-client";
 
 type MeResponse = {
   user: {
@@ -149,10 +149,18 @@ export function ProfileCard() {
 
   useEffect(() => {
     if (whitelistedGuildsQuery.isError) {
+      const err = whitelistedGuildsQuery.error;
+      // Discord OAuth tokens expired — force re-authentication silently
+      if (
+        err instanceof ApiError &&
+        err.status === 401 &&
+        err.message === "No Discord token found"
+      ) {
+        void signIn("discord");
+        return;
+      }
       const message =
-        whitelistedGuildsQuery.error instanceof Error
-          ? whitelistedGuildsQuery.error.message
-          : "Unknown API error.";
+        err instanceof Error ? err.message : "Unknown API error.";
       toast.error(message);
     }
   }, [whitelistedGuildsQuery.error, whitelistedGuildsQuery.isError]);

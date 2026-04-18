@@ -64,7 +64,7 @@ export function AdminUsersTab({ users, guilds }: Props) {
           onChange={(e) => loadManagedUser(e.target.value)}
           className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
         >
-          <option value="">Selectionner un user</option>
+          <option value="">Select a user</option>
           {users.map((user) => (
             <option key={user.id} value={user.id}>
               {user.displayName ?? user.name ?? user.email ?? "Unknown"}
@@ -84,7 +84,7 @@ export function AdminUsersTab({ users, guilds }: Props) {
           onChange={(e) => setManagedUserSelectedGuildId(e.target.value)}
           className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
         >
-          <option value="">Aucun serveur par defaut</option>
+          <option value="">No default server</option>
           {guilds.map((guild) => (
             <option key={guild.discordGuildId} value={guild.discordGuildId}>
               {guild.name ?? guild.discordGuildId}
@@ -97,7 +97,7 @@ export function AdminUsersTab({ users, guilds }: Props) {
         type="button"
         onClick={() => {
           if (!managedUserId) {
-            toast.error("Selectionne un user");
+            toast.error("Select a user");
             return;
           }
           userMutation.mutate();

@@ -30,7 +30,7 @@ type PlayerViewProps = {
 };
 
 const PLAYER_COLUMNS: [PlayerSortKey, string][] = [
-  ["playerName", "Joueur"],
+  ["playerName", "Player"],
   ["sessionsPlayed", "Sessions"],
   ["kills", "Kills"],
   ["deaths", "Deaths"],
@@ -75,7 +75,7 @@ export function PlayerView({
         type="text"
         value={playerSearch}
         onChange={(e) => onSearch(e.target.value)}
-        placeholder="Rechercher un joueur (nom)"
+        placeholder="Search player (name)"
         className="mb-4 w-full max-w-sm rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
       />
 
@@ -102,7 +102,7 @@ export function PlayerView({
                   colSpan={PLAYER_COLUMNS.length}
                   className="px-2 py-6 text-center text-slate-500"
                 >
-                  Aucun joueur trouvé.
+                  No player found.
                 </td>
               </tr>
             ) : (
@@ -137,7 +137,7 @@ export function PlayerView({
                     {player.healingDone}
                   </td>
                   <td className="px-2 py-2 text-slate-400">
-                    {new Date(player.updatedAt).toLocaleString("fr-FR")}
+                    {new Date(player.updatedAt).toLocaleString("en-US")}
                   </td>
                 </tr>
               ))
@@ -150,7 +150,7 @@ export function PlayerView({
         currentPage={effectivePlayerPage}
         totalPages={playerTotalPages}
         totalItems={sortedFilteredPlayersCount}
-        itemLabel="joueur(s)"
+        itemLabel="player(s)"
         onPrev={onPagePrev}
         onNext={onPageNext}
       />
@@ -159,14 +159,14 @@ export function PlayerView({
         <div className="mt-6 rounded-xl border border-slate-700/80 bg-slate-800/40 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-lg font-semibold text-slate-100">
-              Détail joueur : {focusedPlayer.playerName}
+              Player detail: {focusedPlayer.playerName}
             </h3>
             <button
               type="button"
               onClick={onClosePlayer}
               className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
             >
-              Fermer
+              Close
             </button>
           </div>
 
@@ -186,17 +186,17 @@ export function PlayerView({
             />
             <StatCard label="Sessions" value={focusedPlayer.sessionsPlayed} />
             <StatCard
-              label="Damage total"
+              label="Total Damage"
               value={focusedPlayer.damageDealt}
               valueColor="text-amber-300"
-              subLabel={`Moy./session : ${(focusedPlayer.damageDealt / Math.max(1, focusedPlayer.sessionsPlayed)).toFixed(0)}`}
+              subLabel={`Avg./session: ${(focusedPlayer.damageDealt / Math.max(1, focusedPlayer.sessionsPlayed)).toFixed(0)}`}
               className="sm:col-span-2 lg:col-span-3"
             />
             <StatCard
-              label="Heal total"
+              label="Total Healing"
               value={focusedPlayer.healingDone}
               valueColor="text-violet-300"
-              subLabel={`Moy./session : ${(focusedPlayer.healingDone / Math.max(1, focusedPlayer.sessionsPlayed)).toFixed(0)}`}
+              subLabel={`Avg./session: ${(focusedPlayer.healingDone / Math.max(1, focusedPlayer.sessionsPlayed)).toFixed(0)}`}
               className="sm:col-span-2 lg:col-span-3"
             />
           </div>
@@ -234,7 +234,7 @@ export function PlayerView({
                       {row.guildName}
                     </td>
                     <td className="px-2 py-2 text-slate-400">
-                      {new Date(row.createdAt).toLocaleDateString("fr-FR")}
+                      {new Date(row.createdAt).toLocaleDateString("en-US")}
                     </td>
                     <td className="px-2 py-2 text-slate-300">{row.kills}</td>
                     <td className="px-2 py-2 text-slate-300">{row.deaths}</td>

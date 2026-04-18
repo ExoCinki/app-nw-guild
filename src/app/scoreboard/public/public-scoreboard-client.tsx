@@ -40,8 +40,7 @@ export default function PublicScoreboardClient() {
     queryKey: ["scoreboard-public"],
     queryFn: async () => {
       const res = await fetch("/api/scoreboard/public");
-      if (!res.ok)
-        throw new Error("Impossible de charger les scoreboards publics");
+      if (!res.ok) throw new Error("Unable to load public scoreboards");
       return res.json() as Promise<PublicScoreboardResponse>;
     },
     ...queryPresets.shortLived,
@@ -248,9 +247,9 @@ export default function PublicScoreboardClient() {
     const url = `${window.location.origin}${pathname}${params.toString() ? `?${params}` : ""}`;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("Lien copié");
+      toast.success("Link copied");
     } catch {
-      toast.error("Impossible de copier le lien");
+      toast.error("Unable to copy link");
     }
   }
 
@@ -268,7 +267,7 @@ export default function PublicScoreboardClient() {
     return (
       <main className="min-h-[calc(100vh_-_64px)] w-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-6 py-8">
         <div className="mx-auto max-w-5xl rounded-xl border border-red-700/60 bg-red-900/20 p-4 text-sm text-red-200">
-          {error instanceof Error ? error.message : "Erreur inconnue"}
+          {error instanceof Error ? error.message : "Unknown error"}
         </div>
       </main>
     );
@@ -280,15 +279,13 @@ export default function PublicScoreboardClient() {
         {/* En-tête */}
         <header className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
           <h1 className="text-2xl font-semibold text-slate-100">
-            Scoreboard Public
+            Public Scoreboard
           </h1>
           <p className="mt-1 text-sm text-slate-400">
-            Consultation libre des scoreboards et des statistiques globales par
-            joueur.
+            Browse scoreboards and global player stats.
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            Mode public lecture seule : aucune modification ou suppression
-            n&apos;est possible ici.
+            Public read-only mode: no edits or deletions possible here.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -299,7 +296,7 @@ export default function PublicScoreboardClient() {
               }
               className="rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-200 outline-none focus:border-slate-500"
             >
-              <option value="all">Tous les serveurs</option>
+              <option value="all">All servers</option>
               {guildOptions.map((guild) => (
                 <option key={guild.id} value={guild.id}>
                   {guild.label}
@@ -314,7 +311,7 @@ export default function PublicScoreboardClient() {
               }}
               className="rounded-lg border border-indigo-600/40 bg-indigo-500/20 px-3 py-2 text-sm font-medium text-indigo-200 transition hover:bg-indigo-500/30"
             >
-              Copier le lien partageable
+              Copy share link
             </button>
           </div>
 
@@ -339,7 +336,7 @@ export default function PublicScoreboardClient() {
                   : "border border-slate-700 bg-slate-800/60 text-slate-300 hover:border-slate-600"
               }`}
             >
-              Stats joueurs
+              Player stats
             </button>
           </div>
         </header>

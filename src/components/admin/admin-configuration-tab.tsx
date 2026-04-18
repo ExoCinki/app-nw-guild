@@ -381,7 +381,7 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
           onChange={(e) => setConfigGuildId(e.target.value)}
           className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
         >
-          <option value="">Selectionner un serveur</option>
+          <option value="">Select a server</option>
           {guilds.map((guild) => (
             <option key={guild.discordGuildId} value={guild.discordGuildId}>
               {guild.name ?? guild.discordGuildId}

@@ -113,7 +113,7 @@ export default function SharedScoreboardClient({ token }: { token: string }) {
           <p className="mt-2 text-xs text-slate-500">
             Lien valable jusqu&apos;au{" "}
             {new Date(query.data.session.shareExpiresAt).toLocaleString(
-              "fr-FR",
+              "en-US",
             )}
           </p>
         </header>
@@ -124,7 +124,7 @@ export default function SharedScoreboardClient({ token }: { token: string }) {
               type="text"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Rechercher un joueur"
+              placeholder="Search player"
               className="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
             />
           </div>
@@ -133,7 +133,7 @@ export default function SharedScoreboardClient({ token }: { token: string }) {
             <table className="w-full min-w-[860px] text-sm">
               <thead>
                 <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="px-2 py-2">Joueur</th>
+                  <th className="px-2 py-2">Player</th>
                   <th className="px-2 py-2">Kills</th>
                   <th className="px-2 py-2">Deaths</th>
                   <th className="px-2 py-2">Assists</th>
@@ -148,7 +148,7 @@ export default function SharedScoreboardClient({ token }: { token: string }) {
                       colSpan={6}
                       className="px-2 py-6 text-center text-slate-500"
                     >
-                      Aucun joueur a afficher.
+                      No player to display.
                     </td>
                   </tr>
                 ) : (

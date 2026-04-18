@@ -80,6 +80,7 @@ export function Navbar() {
   const isOwner = Boolean(session?.user?.isOwner);
   const canAccessAdmin = Boolean(isOwner || session?.user?.isGlobalAdmin);
   const access = meQuery.data?.access;
+  const isNavLoading = status === "authenticated" && meQuery.isLoading;
   const canAccessRoster = Boolean(access?.roster);
   const canAccessPayout = Boolean(access?.payout);
   const canAccessScoreboard = Boolean(access?.scoreboard);
@@ -114,7 +115,15 @@ export function Navbar() {
             >
               Home
             </Link>
-            {session?.user && canAccessRoster ? (
+            {isNavLoading ? (
+              <>
+                <div className="h-4 w-12 animate-pulse rounded bg-slate-700" />
+                <div className="h-4 w-14 animate-pulse rounded bg-slate-700" />
+                <div className="h-4 w-20 animate-pulse rounded bg-slate-700" />
+                <div className="h-4 w-16 animate-pulse rounded bg-slate-700" />
+              </>
+            ) : null}
+            {!isNavLoading && session?.user && canAccessRoster ? (
               <Link
                 href="/roster"
                 className={`text-sm font-medium transition ${isActive("/roster")}`}
@@ -122,7 +131,7 @@ export function Navbar() {
                 Roster
               </Link>
             ) : null}
-            {session?.user && canAccessPayout ? (
+            {!isNavLoading && session?.user && canAccessPayout ? (
               <Link
                 href="/payout"
                 className={`text-sm font-medium transition ${isActive("/payout")}`}
@@ -130,7 +139,7 @@ export function Navbar() {
                 Payout
               </Link>
             ) : null}
-            {session?.user && canAccessScoreboard ? (
+            {!isNavLoading && session?.user && canAccessScoreboard ? (
               <Link
                 href="/scoreboard"
                 className={`text-sm font-medium transition ${isActive("/scoreboard")}`}
@@ -138,7 +147,7 @@ export function Navbar() {
                 Scoreboard
               </Link>
             ) : null}
-            {session?.user && canAccessArchives ? (
+            {!isNavLoading && session?.user && canAccessArchives ? (
               <Link
                 href="/archives"
                 className={`text-sm font-medium transition ${isActive("/archives")}`}

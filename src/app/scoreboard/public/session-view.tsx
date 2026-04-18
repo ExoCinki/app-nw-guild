@@ -54,7 +54,7 @@ export function SessionView({
         <div className="space-y-2">
           {sessions.length === 0 ? (
             <p className="text-sm text-slate-500">
-              Aucun scoreboard public disponible.
+              No public scoreboard available.
             </p>
           ) : (
             sessions.map((session) => {
@@ -71,13 +71,13 @@ export function SessionView({
                   }`}
                 >
                   <p className="truncate text-sm font-semibold text-slate-200">
-                    {session.name || "Scoreboard sans nom"}
+                    {session.name || "Untitled scoreboard"}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
                     {session.guildName || session.discordGuildId}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {new Date(session.createdAt).toLocaleDateString("fr-FR")} —{" "}
+                    {new Date(session.createdAt).toLocaleDateString("en-US")} —{" "}
                     {session.status}
                   </p>
                 </button>
@@ -91,7 +91,7 @@ export function SessionView({
       <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
         {!selectedSession ? (
           <p className="text-sm text-slate-500">
-            Sélectionne une session pour voir le détail.
+            Select a session to view details.
           </p>
         ) : (
           <>
@@ -109,7 +109,7 @@ export function SessionView({
               type="text"
               value={sessionSearch}
               onChange={(e) => onSearch(e.target.value)}
-              placeholder="Rechercher un joueur"
+              placeholder="Search player"
               className="mb-4 w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
             />
 
@@ -119,7 +119,7 @@ export function SessionView({
                   <tr className="border-b border-slate-700 text-left">
                     {(
                       [
-                        ["playerName", "Joueur"],
+                        ["playerName", "Player"],
                         ["kills", "Kills"],
                         ["deaths", "Deaths"],
                         ["assists", "Assists"],
@@ -137,7 +137,7 @@ export function SessionView({
                       </th>
                     ))}
                     <th className="px-2 py-2 text-xs uppercase tracking-wide text-slate-400">
-                      Profil
+                      Profile
                     </th>
                   </tr>
                 </thead>
@@ -148,7 +148,7 @@ export function SessionView({
                         colSpan={7}
                         className="px-2 py-6 text-center text-slate-500"
                       >
-                        Aucun joueur trouvé.
+                        No player found.
                       </td>
                     </tr>
                   ) : (
@@ -199,7 +199,7 @@ export function SessionView({
               currentPage={effectiveSessionPage}
               totalPages={sessionTotalPages}
               totalItems={sortedFilteredEntries.length}
-              itemLabel="joueur(s)"
+              itemLabel="player(s)"
               onPrev={onPagePrev}
               onNext={onPageNext}
             />

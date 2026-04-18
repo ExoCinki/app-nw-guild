@@ -119,7 +119,7 @@ export function AdminGlobalAdminsTab({ users, globalAdmins }: Props) {
           disabled={addMutation.isPending}
           className="rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600 disabled:opacity-50"
         >
-          Ajouter
+          Add
         </button>
       </div>
 
@@ -127,9 +127,9 @@ export function AdminGlobalAdminsTab({ users, globalAdmins }: Props) {
         <table className="min-w-full text-xs text-slate-200">
           <thead className="bg-slate-800/90 text-slate-300">
             <tr>
-              <th className="px-3 py-2 text-left">Utilisateur</th>
+              <th className="px-3 py-2 text-left">User</th>
               <th className="px-3 py-2 text-left">Discord ID</th>
-              <th className="px-3 py-2 text-left">Ajouté le</th>
+              <th className="px-3 py-2 text-left">Added on</th>
               <th className="px-3 py-2 text-left">Action</th>
             </tr>
           </thead>
@@ -148,7 +148,7 @@ export function AdminGlobalAdminsTab({ users, globalAdmins }: Props) {
                     {user?.discordId ?? "-"}
                   </td>
                   <td className="px-3 py-2 text-slate-400">
-                    {new Date(admin.createdAt).toLocaleString("fr-FR")}
+                    {new Date(admin.createdAt).toLocaleString("en-US")}
                   </td>
                   <td className="px-3 py-2">
                     <button
@@ -157,7 +157,7 @@ export function AdminGlobalAdminsTab({ users, globalAdmins }: Props) {
                       disabled={removeMutation.isPending}
                       className="rounded bg-red-800 px-2 py-1 hover:bg-red-700 disabled:opacity-50"
                     >
-                      Retirer
+                      Remove
                     </button>
                   </td>
                 </tr>
@@ -166,7 +166,7 @@ export function AdminGlobalAdminsTab({ users, globalAdmins }: Props) {
             {globalAdmins.length === 0 ? (
               <tr>
                 <td className="px-3 py-3 text-slate-400" colSpan={4}>
-                  Aucun admin global configuré.
+                  No global admin configured.
                 </td>
               </tr>
             ) : null}

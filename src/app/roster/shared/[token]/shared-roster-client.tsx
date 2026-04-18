@@ -347,7 +347,7 @@ export default function SharedRosterClient({ token }: { token: string }) {
           </h1>
           <p className="mt-1 text-xs text-slate-400">
             Status: {query.data.roster.status} | Updated at:{" "}
-            {new Date(query.data.roster.updatedAt).toLocaleString("fr-FR")}
+            {new Date(query.data.roster.updatedAt).toLocaleString("en-US")}
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">

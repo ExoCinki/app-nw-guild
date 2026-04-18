@@ -191,7 +191,7 @@ export default function ScoreboardClient() {
     queryFn: async () => {
       const response = await fetch("/api/scoreboard/sessions");
       if (!response.ok) {
-        throw new Error("Impossible de charger les scoreboards");
+        throw new Error("Unable to load scoreboards");
       }
       return response.json() as Promise<ScoreboardSession[]>;
     },
@@ -203,7 +203,7 @@ export default function ScoreboardClient() {
     queryFn: async () => {
       const response = await fetch("/api/scoreboard/history");
       if (!response.ok) {
-        throw new Error("Impossible de charger l'historique joueur");
+        throw new Error("Unable to load player history");
       }
       const payload = (await response.json()) as { players: PlayerHistory[] };
       return payload.players;
@@ -273,8 +273,7 @@ export default function ScoreboardClient() {
           error?: string;
         } | null;
         throw new Error(
-          payload?.error ??
-            "Impossible de charger les sessions roster pour l'import.",
+          payload?.error ?? "Unable to load roster sessions for import.",
         );
       }
 
@@ -302,8 +301,7 @@ export default function ScoreboardClient() {
           error?: string;
         } | null;
         throw new Error(
-          payload?.error ??
-            "Impossible de sauvegarder la session roster selectionnee.",
+          payload?.error ?? "Unable to save selected roster session.",
         );
       }
 
@@ -498,7 +496,7 @@ export default function ScoreboardClient() {
       });
 
       if (!response.ok) {
-        throw new Error("Impossible de creer un scoreboard");
+        throw new Error("Unable to create scoreboard");
       }
 
       return response.json() as Promise<ScoreboardSession>;
@@ -507,7 +505,7 @@ export default function ScoreboardClient() {
       queryClient.invalidateQueries({ queryKey: ["scoreboard-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["scoreboard-history"] });
       setSelectedSessionId(newSession.id);
-      toast.success("Scoreboard cree");
+      toast.success("Scoreboard created");
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -526,9 +524,7 @@ export default function ScoreboardClient() {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(
-          payload?.error ?? "Impossible de creer le lien partageable",
-        );
+        throw new Error(payload?.error ?? "Unable to create share link");
       }
 
       return response.json() as Promise<{
@@ -538,7 +534,7 @@ export default function ScoreboardClient() {
       }>;
     },
     onSuccess: () => {
-      toast.success("Lien de partage genere");
+      toast.success("Share link generated");
       queryClient.invalidateQueries({ queryKey: ["scoreboard-sessions"] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -558,11 +554,11 @@ export default function ScoreboardClient() {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(payload?.error ?? "Impossible de revoquer le lien");
+        throw new Error(payload?.error ?? "Unable to revoke share link");
       }
     },
     onSuccess: () => {
-      toast.success("Lien de partage revoque");
+      toast.success("Share link revoked");
       queryClient.invalidateQueries({ queryKey: ["scoreboard-sessions"] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -575,7 +571,7 @@ export default function ScoreboardClient() {
       });
 
       if (!response.ok) {
-        throw new Error("Impossible de supprimer ce scoreboard");
+        throw new Error("Unable to delete this scoreboard");
       }
     },
     onSuccess: () => {
@@ -605,7 +601,7 @@ export default function ScoreboardClient() {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(payload?.error ?? "Import roster impossible");
+        throw new Error(payload?.error ?? "Unable to import roster");
       }
 
       return response.json() as Promise<{ imported: number }>;
@@ -613,7 +609,7 @@ export default function ScoreboardClient() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["scoreboard-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["scoreboard-history"] });
-      toast.success(`${data.imported} joueur(s) importe(s)`);
+      toast.success(`${data.imported} player(s) imported`);
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -643,7 +639,7 @@ export default function ScoreboardClient() {
         const json = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(json?.error ?? "Erreur de mise a jour");
+        throw new Error(json?.error ?? "Update failed");
       }
 
       return response.json();
@@ -667,7 +663,7 @@ export default function ScoreboardClient() {
         const payload = (await response.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(payload?.error ?? "Suppression impossible");
+        throw new Error(payload?.error ?? "Deletion failed");
       }
     },
     onMutate: async (entryId: string) => {
@@ -688,7 +684,7 @@ export default function ScoreboardClient() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scoreboard-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["scoreboard-history"] });
-      toast.success("Joueur retire du scoreboard");
+      toast.success("Player removed from scoreboard");
     },
     onError: (error: Error, _entryId, context) => {
       if (context?.previous) {
@@ -713,7 +709,7 @@ export default function ScoreboardClient() {
       );
 
       if (!response.ok) {
-        throw new Error("Impossible de mettre a jour le scoreboard");
+        throw new Error("Unable to update scoreboard");
       }
 
       return response.json();
@@ -788,7 +784,7 @@ export default function ScoreboardClient() {
                 Scoreboard
               </h1>
               <p className="mt-1 text-sm text-slate-400">
-                Saisie des stats de combat et historique joueur.
+                Combat stats entry and player history.
               </p>
             </div>
 
@@ -818,7 +814,7 @@ export default function ScoreboardClient() {
                   icon={faClockRotateLeft}
                   className="mr-2 h-4 w-4"
                 />
-                Historique joueur
+                Player history
               </button>
             </div>
           </div>
@@ -838,9 +834,7 @@ export default function ScoreboardClient() {
 
               <div className="space-y-2">
                 {sessions.length === 0 ? (
-                  <p className="text-sm text-slate-500">
-                    Aucun scoreboard pour le moment.
-                  </p>
+                  <p className="text-sm text-slate-500">No scoreboard yet.</p>
                 ) : (
                   sessions.map((session) => {
                     const isSelected = session.id === selectedSessionId;
@@ -856,15 +850,15 @@ export default function ScoreboardClient() {
                         }`}
                       >
                         <p className="truncate text-sm font-semibold text-slate-200">
-                          {session.name || "Scoreboard sans nom"}
+                          {session.name || "Untitled scoreboard"}
                         </p>
                         <p className="mt-1 text-xs text-slate-400">
                           {new Date(session.createdAt).toLocaleDateString(
-                            "fr-FR",
+                            "en-US",
                           )}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {session.entries.length} joueur(s)
+                          {session.entries.length} player(s)
                         </p>
                       </button>
                     );
@@ -876,7 +870,7 @@ export default function ScoreboardClient() {
             <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
               {!selectedSession ? (
                 <p className="text-sm text-slate-400">
-                  Selectionne un scoreboard pour commencer.
+                  Select a scoreboard to get started.
                 </p>
               ) : (
                 <>
@@ -981,7 +975,7 @@ export default function ScoreboardClient() {
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <div className="w-full rounded-lg border border-slate-800 bg-slate-950/40 p-3">
                       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                        Lien partageable du scoreboard
+                        Scoreboard share link
                       </p>
 
                       <div className="flex flex-wrap items-center gap-2">
@@ -1032,15 +1026,15 @@ export default function ScoreboardClient() {
                           disabled={!selectedSession?.id || !selectedSharedLink}
                           className="rounded-lg border border-red-600/40 bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 hover:bg-red-500/30"
                         >
-                          Revoquer
+                          Revoke
                         </LoadingButton>
                       </div>
 
                       {selectedShareExpiresAt ? (
                         <p className="mt-2 text-[11px] text-slate-500">
-                          Expire le{" "}
+                          Expires on{" "}
                           {new Date(selectedShareExpiresAt).toLocaleString(
-                            "fr-FR",
+                            "en-US",
                           )}
                         </p>
                       ) : null}
@@ -1052,7 +1046,7 @@ export default function ScoreboardClient() {
                       type="text"
                       value={sessionSearch}
                       onChange={(event) => setSessionSearch(event.target.value)}
-                      placeholder="Rechercher un joueur dans ce scoreboard"
+                      placeholder="Search player in this scoreboard"
                       className="w-full rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
                     />
                   </div>
@@ -1062,8 +1056,8 @@ export default function ScoreboardClient() {
                       <div className="mb-4 space-y-4">
                         {rosterGroupedStats.length === 0 ? (
                           <div className="rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-3 text-xs text-slate-400">
-                            Aucune correspondance entre les joueurs du roster
-                            selectionne et les joueurs du scoreboard.
+                            No match between roster players and scoreboard
+                            players.
                           </div>
                         ) : (
                           rosterGroupedStats.map((summary) => (
@@ -1076,7 +1070,7 @@ export default function ScoreboardClient() {
                                   Roster {summary.rosterIndex}
                                 </h3>
                                 <span className="text-xs text-slate-400">
-                                  {summary.uniquePlayersCount} joueur(s)
+                                  {summary.uniquePlayersCount} player(s)
                                 </span>
                               </div>
 
@@ -1085,7 +1079,7 @@ export default function ScoreboardClient() {
                                   <thead>
                                     <tr className="border-b border-slate-800 text-left uppercase tracking-wide text-slate-500">
                                       <th className="px-2 py-2">Groupe</th>
-                                      <th className="px-2 py-2">Joueurs</th>
+                                      <th className="px-2 py-2">Players</th>
                                       <th className="px-2 py-2">Kills</th>
                                       <th className="px-2 py-2">Deaths</th>
                                       <th className="px-2 py-2">Assists</th>
@@ -1160,7 +1154,7 @@ export default function ScoreboardClient() {
                     <table className="w-full min-w-[900px] text-sm">
                       <thead>
                         <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
-                          <th className="px-2 py-2">Joueur</th>
+                          <th className="px-2 py-2">Player</th>
                           <th className="px-2 py-2">Kills</th>
                           <th className="px-2 py-2">Deaths</th>
                           <th className="px-2 py-2">Assists</th>
@@ -1176,7 +1170,7 @@ export default function ScoreboardClient() {
                               colSpan={7}
                               className="px-2 py-6 text-center text-slate-500"
                             >
-                              Aucun joueur dans ce scoreboard.
+                              No player in this scoreboard.
                             </td>
                           </tr>
                         ) : (
@@ -1323,13 +1317,13 @@ export default function ScoreboardClient() {
           <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-slate-100">
-                Stats globales par joueur
+                Global stats per player
               </h2>
               <input
                 type="text"
                 value={historySearch}
                 onChange={(event) => setHistorySearch(event.target.value)}
-                placeholder="Rechercher un joueur"
+                placeholder="Search player"
                 className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-500"
               />
             </div>
@@ -1343,14 +1337,14 @@ export default function ScoreboardClient() {
                 <table className="w-full min-w-[960px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-700 text-left text-xs uppercase tracking-wide text-slate-400">
-                      <th className="px-2 py-2">Joueur</th>
+                      <th className="px-2 py-2">Player</th>
                       <th className="px-2 py-2">Sessions</th>
                       <th className="px-2 py-2">Kills</th>
                       <th className="px-2 py-2">Deaths</th>
                       <th className="px-2 py-2">Assists</th>
                       <th className="px-2 py-2">Damage</th>
                       <th className="px-2 py-2">Healing</th>
-                      <th className="px-2 py-2">Derniere maj</th>
+                      <th className="px-2 py-2">Last updated</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1360,7 +1354,7 @@ export default function ScoreboardClient() {
                           colSpan={8}
                           className="px-2 py-6 text-center text-slate-500"
                         >
-                          Aucun resultat dans l&apos;historique.
+                          No result in history.
                         </td>
                       </tr>
                     ) : (
@@ -1399,7 +1393,7 @@ export default function ScoreboardClient() {
                             {player.healingDone}
                           </td>
                           <td className="px-2 py-2 text-slate-400">
-                            {new Date(player.updatedAt).toLocaleString("fr-FR")}
+                            {new Date(player.updatedAt).toLocaleString("en-US")}
                           </td>
                         </tr>
                       ))
@@ -1531,7 +1525,7 @@ export default function ScoreboardClient() {
                             colSpan={8}
                             className="px-2 py-6 text-center text-slate-500"
                           >
-                            Aucune participation trouvee.
+                            No participation found.
                           </td>
                         </tr>
                       ) : (
@@ -1545,7 +1539,7 @@ export default function ScoreboardClient() {
                             </td>
                             <td className="px-2 py-2 text-slate-400">
                               {new Date(war.sessionCreatedAt).toLocaleString(
-                                "fr-FR",
+                                "en-US",
                               )}
                             </td>
                             <td className="px-2 py-2 text-slate-300">

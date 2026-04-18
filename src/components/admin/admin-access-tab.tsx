@@ -143,37 +143,36 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-global"] });
-      toast.success("Règle supprimée");
+      toast.success("Access rule removed");
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const formatPerm = (canRead: boolean, canWrite: boolean) => {
-    if (!canRead) return "Aucun";
+    if (!canRead) return "None";
     return canWrite ? "Read/Write" : "Read";
   };
 
   return (
     <section className="rounded-xl border border-slate-800/60 bg-slate-900/70 p-4 sm:p-6">
       <div className="mb-4 text-lg font-semibold text-slate-100">
-        Droits utilisateur par serveur
+        User rights per server
       </div>
 
       <input
         type="text"
         value={userSearchQuery}
         onChange={(e) => setUserSearchQuery(e.target.value)}
-        placeholder="Rechercher un user (nom, mail, discord id)..."
+        placeholder="Search user (name, email, discord id)..."
         className="mb-3 w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
       />
 
       <div className="mb-3 text-xs text-slate-400">
-        {filteredUsers.length} utilisateur(s) trouve(s)
+        {filteredUsers.length} user(s) found
       </div>
       <div className="mb-3 text-xs text-slate-500">
-        Choisis un utilisateur, puis un serveur, et enregistre. Tu peux refaire
-        l&apos;action pour plusieurs serveurs, ou utiliser la sélection
-        multiple.
+        Select a user, then a server, and save. You can repeat the action for
+        multiple servers, or use the multi-select.
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -186,7 +185,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
           }}
           className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
         >
-          <option value="">Selectionner un user</option>
+          <option value="">Select a user</option>
           {filteredUsers.map((user) => (
             <option key={user.id} value={user.id}>
               {user.displayName ?? user.name ?? user.email ?? "Unknown"} -{" "}
@@ -204,7 +203,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
           }}
           className="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
         >
-          <option value="">Selectionner un serveur</option>
+          <option value="">Select a server</option>
           {guilds.map((guild) => (
             <option key={guild.discordGuildId} value={guild.discordGuildId}>
               {guild.name ?? guild.discordGuildId}
@@ -215,7 +214,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
 
       <div className="mt-3 rounded border border-slate-700/70 bg-slate-800/40 p-3">
         <div className="mb-2 text-xs font-medium text-slate-300">
-          Sélection multiple de serveurs
+          Multi-server selection
         </div>
         <div className="mb-2 flex flex-wrap gap-2">
           <button
@@ -224,7 +223,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
             disabled={!selectedGuildId}
             className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-100 hover:bg-slate-600 disabled:opacity-50"
           >
-            Ajouter le serveur sélectionné
+            Add selected server
           </button>
           <button
             type="button"
@@ -232,14 +231,12 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
             disabled={selectedGuildIds.length === 0}
             className="rounded bg-slate-700 px-2 py-1 text-xs text-slate-100 hover:bg-slate-600 disabled:opacity-50"
           >
-            Vider la sélection
+            Clear selection
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
           {selectedGuildIds.length === 0 ? (
-            <span className="text-xs text-slate-500">
-              Aucun serveur sélectionné
-            </span>
+            <span className="text-xs text-slate-500">No server selected</span>
           ) : (
             selectedGuildIds.map((guildId) => (
               <button
@@ -273,7 +270,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
             }}
             className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
           >
-            Tout autoriser
+            Allow all
           </button>
           <button
             type="button"
@@ -291,7 +288,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
             }}
             className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
           >
-            Lecture seulement partout
+            Read only everywhere
           </button>
           <button
             type="button"
@@ -309,7 +306,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
             }}
             className="rounded bg-slate-700 px-2 py-1 text-xs hover:bg-slate-600"
           >
-            Tout retirer
+            Remove all
           </button>
         </div>
 
@@ -472,26 +469,26 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
         className="mt-4 rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600 disabled:opacity-50"
       >
         {selectedGuildIds.length > 1
-          ? `Enregistrer les droits (${selectedGuildIds.length} serveurs)`
-          : "Enregistrer les droits"}
+          ? `Save rights (${selectedGuildIds.length} servers)`
+          : "Save rights"}
       </button>
 
       <div className="mt-6">
         <div className="mb-2 text-sm font-semibold text-slate-200">
-          Regles explicites actives
+          Active explicit rules
         </div>
         <div className="overflow-x-auto rounded border border-slate-700">
           <table className="min-w-full text-xs text-slate-200">
             <thead className="bg-slate-800/90 text-slate-300">
               <tr>
-                <th className="px-3 py-2 text-left">Utilisateur</th>
-                <th className="px-3 py-2 text-left">Serveur</th>
+                <th className="px-3 py-2 text-left">User</th>
+                <th className="px-3 py-2 text-left">Server</th>
                 <th className="px-3 py-2 text-left">Roster</th>
                 <th className="px-3 py-2 text-left">Payout</th>
                 <th className="px-3 py-2 text-left">Scoreboard</th>
                 <th className="px-3 py-2 text-left">Configuration</th>
                 <th className="px-3 py-2 text-left">Archives</th>
-                <th className="px-3 py-2 text-left">Regle explicite</th>
+                <th className="px-3 py-2 text-left">Explicit rule</th>
                 <th className="px-3 py-2 text-left">Action</th>
               </tr>
             </thead>
@@ -534,7 +531,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                     <td className="px-3 py-2">
                       {formatPerm(row.canReadArchives, row.canWriteArchives)}
                     </td>
-                    <td className="px-3 py-2 text-emerald-300">Oui</td>
+                    <td className="px-3 py-2 text-emerald-300">Yes</td>
                     <td className="px-3 py-2 space-x-2">
                       <button
                         type="button"
@@ -546,7 +543,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                         }}
                         className="rounded bg-slate-700 px-2 py-1 hover:bg-slate-600"
                       >
-                        Modifier
+                        Edit
                       </button>
                       <button
                         type="button"
@@ -559,7 +556,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
                         disabled={removeAccessMutation.isPending}
                         className="rounded bg-rose-800 px-2 py-1 hover:bg-rose-700 disabled:opacity-50"
                       >
-                        Supprimer
+                        Delete
                       </button>
                     </td>
                   </tr>
@@ -568,7 +565,7 @@ export function AdminAccessTab({ users, guilds, accesses }: Props) {
               {accesses.length === 0 ? (
                 <tr>
                   <td className="px-3 py-3 text-slate-400" colSpan={9}>
-                    Aucune regle explicite enregistree.
+                    No explicit rule saved.
                   </td>
                 </tr>
               ) : null}

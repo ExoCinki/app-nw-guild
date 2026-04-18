@@ -110,7 +110,7 @@ export function AdminBansTab({ users, bans }: Props) {
             ))}
             {filteredForSearch.length === 0 ? (
               <div className="px-3 py-2 text-sm text-slate-400">
-                Aucun utilisateur trouvé.
+                No user found.
               </div>
             ) : null}
           </div>

@@ -26,7 +26,7 @@ export async function getDiscordGuildRoles(guildId: string): Promise<{
     if (tokens.length === 0) {
         return {
             roles: [],
-            rolesError: "DISCORD_BOT_TOKEN ou DISCORD_BOT_TOKENS manquant pour charger les roles.",
+            rolesError: "DISCORD_BOT_TOKEN or DISCORD_BOT_TOKENS missing to load roles.",
         };
     }
 
