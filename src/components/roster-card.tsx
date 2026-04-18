@@ -468,6 +468,14 @@ type RoleKey =
   | "bench"
   | null;
 
+type ParticipantCountBadge = {
+  key: string;
+  count: number;
+  icon: IconDefinition;
+  color: string;
+  label: string;
+};
+
 const ROLE_META: Record<
   string,
   { label: string; icon: IconDefinition; color: string }
@@ -2480,6 +2488,7 @@ export function RosterCard() {
   const allParticipants = participantsQuery.data?.participants ?? [];
   const totalParticipantsCount = allParticipants.length;
   const roleCounts: Partial<Record<string, number>> = {};
+  const eunaSpecCounts: Partial<Record<string, number>> = {};
 
   for (const participant of allParticipants) {
     const participantKey = participant.userId ?? participant.name ?? "";
@@ -2487,6 +2496,14 @@ export function RosterCard() {
       selectedImportFilterPreset === "euna"
         ? resolveEffectiveEunaParticipant(participant, participantKey)
         : participant;
+
+    if (selectedImportFilterPreset === "euna") {
+      const specToken = normalizeCompactToken(effectiveParticipant.specName);
+      if (specToken && specToken in EUNA_SPEC_TO_ROLE) {
+        eunaSpecCounts[specToken] = (eunaSpecCounts[specToken] ?? 0) + 1;
+      }
+    }
+
     const role =
       resolveParticipantRoleByPreset(
         effectiveParticipant,
@@ -2495,16 +2512,41 @@ export function RosterCard() {
     roleCounts[role] = (roleCounts[role] ?? 0) + 1;
   }
 
-  const participantRoleBadges = Object.keys(ROLE_META)
-    .sort(
-      (a, b) => (ROLE_SORT_PRIORITY[a] ?? 99) - (ROLE_SORT_PRIORITY[b] ?? 99),
-    )
-    .filter((role) => (roleCounts[role] ?? 0) > 0)
-    .map((role) => ({
-      role,
-      count: roleCounts[role] ?? 0,
-      meta: ROLE_META[role],
-    }));
+  const participantRoleBadges: ParticipantCountBadge[] =
+    selectedImportFilterPreset === "euna"
+      ? Object.keys(EUNA_SPEC_TO_ROLE)
+          .filter((specKey) => (eunaSpecCounts[specKey] ?? 0) > 0)
+          .map((specKey) => {
+            const mappedRole = EUNA_SPEC_TO_ROLE[specKey];
+            const isCrescentWave = specKey === "crescentwave";
+            const mappedMeta =
+              mappedRole && mappedRole in ROLE_META
+                ? ROLE_META[mappedRole]
+                : null;
+
+            return {
+              key: specKey,
+              count: eunaSpecCounts[specKey] ?? 0,
+              icon: isCrescentWave ? faKhanda : (mappedMeta?.icon ?? faUser),
+              color: isCrescentWave
+                ? "text-cyan-400"
+                : (mappedMeta?.color ?? "text-slate-500"),
+              label: EUNA_SPEC_LABELS[specKey] ?? specKey,
+            };
+          })
+      : Object.keys(ROLE_META)
+          .sort(
+            (a, b) =>
+              (ROLE_SORT_PRIORITY[a] ?? 99) - (ROLE_SORT_PRIORITY[b] ?? 99),
+          )
+          .filter((role) => (roleCounts[role] ?? 0) > 0)
+          .map((role) => ({
+            key: role,
+            count: roleCounts[role] ?? 0,
+            icon: ROLE_META[role].icon,
+            color: ROLE_META[role].color,
+            label: ROLE_META[role].label,
+          }));
 
   const lastRefreshRaw = selectedEventId
     ? (participantsQuery.data?.participantsCachedAt ??
@@ -2802,20 +2844,27 @@ export function RosterCard() {
                   .data?.participants.length ?? 0) ===
                 0 ? null : participantRoleBadges.length === 0 ? null : (
                 <div className="flex flex-wrap gap-1.5 border-b border-slate-800 px-3 py-2">
-                  {participantRoleBadges.map(({ role, count, meta }) => (
-                    <span
-                      key={role}
-                      className="flex items-center gap-1 rounded-full border border-slate-700/60 bg-slate-900/60 px-2 py-0.5 text-xs font-medium"
-                    >
-                      <FontAwesomeIcon
-                        icon={meta.icon}
-                        className={`h-2.5 w-2.5 ${meta.color}`}
-                      />
-                      <span className="text-slate-100 tabular-nums">
-                        {count}
+                  {participantRoleBadges.map(
+                    ({ key, count, icon, color, label }) => (
+                      <span
+                        key={key}
+                        className="flex items-center gap-1 rounded-full border border-slate-700/60 bg-slate-900/60 px-2 py-0.5 text-xs font-medium"
+                      >
+                        <FontAwesomeIcon
+                          icon={icon}
+                          className={`h-2.5 w-2.5 ${color}`}
+                        />
+                        <span className="text-slate-100 tabular-nums">
+                          {count}
+                        </span>
+                        {selectedImportFilterPreset === "euna" ? (
+                          <span className="text-[10px] text-slate-300">
+                            {label}
+                          </span>
+                        ) : null}
                       </span>
-                    </span>
-                  ))}
+                    ),
+                  )}
                 </div>
               )}
 
