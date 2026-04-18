@@ -1988,15 +1988,8 @@ export function RosterCard() {
 
     const persistedSearchQuery = data.roster.playerSearchQuery ?? "";
 
-    if (persistedSearchQuery !== playerSearch) {
-      setPlayerSearch(persistedSearchQuery);
-    }
-  }, [
-    activeSessionId,
-    data?.roster.playerSearchQuery,
-    data?.rosterSession.id,
-    playerSearch,
-  ]);
+    setPlayerSearch(persistedSearchQuery);
+  }, [activeSessionId, data?.roster.playerSearchQuery, data?.rosterSession.id]);
 
   useEffect(() => {
     if (!activeSessionId || data?.rosterSession.id !== activeSessionId) {
