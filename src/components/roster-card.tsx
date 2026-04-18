@@ -23,6 +23,7 @@ import {
   faLockOpen,
   faShareNodes,
   faFlag,
+  faKhanda,
 } from "@fortawesome/free-solid-svg-icons";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -3254,11 +3255,16 @@ export function RosterCard() {
                   >
                     <span>{EUNA_SPEC_LABELS[specKey] ?? specKey}</span>
                     <span className="text-slate-500">-&gt;</span>
-                    <RoleIcon role={mappedRole} />
+                    {specKey === "crescentwave" ? (
+                      <FontAwesomeIcon
+                        icon={faKhanda}
+                        className="h-3 w-3 text-cyan-400"
+                      />
+                    ) : (
+                      <RoleIcon role={mappedRole} />
+                    )}
                     <span className="text-slate-100">
-                      {mappedRole
-                        ? (ROLE_META[mappedRole]?.label ?? "N/A")
-                        : "N/A"}
+                      {EUNA_SPEC_LABELS[specKey] ?? specKey}
                     </span>
                   </span>
                 ),
