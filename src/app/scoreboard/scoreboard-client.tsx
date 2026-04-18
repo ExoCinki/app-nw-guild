@@ -141,6 +141,15 @@ function normalizePlayerNameKey(value: string) {
   return value.trim().toLowerCase();
 }
 
+function normalizeSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function createEmptyTotals(): ScoreTotals {
   return {
     kills: 0,
@@ -312,11 +321,11 @@ export default function ScoreboardClient() {
 
   const visibleSessionEntries = useMemo(() => {
     const entries = selectedSession?.entries ?? [];
-    const needle = sessionSearch.trim().toLowerCase();
+    const needle = normalizeSearchText(sessionSearch);
 
     const filtered = needle
       ? entries.filter((entry) =>
-          entry.playerName.toLowerCase().includes(needle),
+          normalizeSearchText(entry.playerName).includes(needle),
         )
       : entries;
 
@@ -328,11 +337,11 @@ export default function ScoreboardClient() {
   }, [selectedSession?.entries, sessionSearch]);
 
   const visibleHistoryPlayers = useMemo(() => {
-    const needle = historySearch.trim().toLowerCase();
+    const needle = normalizeSearchText(historySearch);
 
     const filtered = needle
       ? historyPlayers.filter((player) =>
-          player.playerName.toLowerCase().includes(needle),
+          normalizeSearchText(player.playerName).includes(needle),
         )
       : historyPlayers;
 

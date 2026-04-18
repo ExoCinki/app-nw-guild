@@ -27,7 +27,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   InlineLoadingIndicator,
@@ -143,6 +143,15 @@ function normalizeCompactToken(value: string | null) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "") ?? null
   );
+}
+
+function normalizeSearchText(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function isMercenaryName(value: string | null | undefined) {
@@ -1691,6 +1700,8 @@ function GroupCard({
 
 export function RosterCard() {
   const queryClient = useQueryClient();
+  const lastSyncedPlayerSearchRef = useRef("");
+  const lastSyncedSessionIdRef = useRef<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [selectedImportFilterPreset, setSelectedImportFilterPreset] =
@@ -1986,10 +1997,32 @@ export function RosterCard() {
       return;
     }
 
+    const currentSessionId = data.rosterSession.id;
     const persistedSearchQuery = data.roster.playerSearchQuery ?? "";
 
-    setPlayerSearch(persistedSearchQuery);
-  }, [activeSessionId, data?.roster.playerSearchQuery, data?.rosterSession.id]);
+    if (lastSyncedSessionIdRef.current !== currentSessionId) {
+      lastSyncedSessionIdRef.current = currentSessionId;
+      lastSyncedPlayerSearchRef.current = persistedSearchQuery;
+      setPlayerSearch(persistedSearchQuery);
+      return;
+    }
+
+    if (persistedSearchQuery === playerSearch) {
+      lastSyncedPlayerSearchRef.current = persistedSearchQuery;
+      return;
+    }
+
+    // Avoid overriding local typing: only sync when local value is still the last synced value.
+    if (playerSearch === lastSyncedPlayerSearchRef.current) {
+      lastSyncedPlayerSearchRef.current = persistedSearchQuery;
+      setPlayerSearch(persistedSearchQuery);
+    }
+  }, [
+    activeSessionId,
+    data?.roster.playerSearchQuery,
+    data?.rosterSession.id,
+    playerSearch,
+  ]);
 
   useEffect(() => {
     if (!activeSessionId || data?.rosterSession.id !== activeSessionId) {
@@ -2410,7 +2443,7 @@ export function RosterCard() {
     ) as string[],
   );
 
-  const searchQuery = playerSearch.trim().toLowerCase();
+  const searchQuery = normalizeSearchText(playerSearch);
 
   function resolveEffectiveEunaParticipant(
     participant: RaidHelperParticipant,
@@ -2440,8 +2473,10 @@ export function RosterCard() {
         return false;
       }
       if (searchQuery) {
-        const name = (p.name ?? p.userId ?? "").toLowerCase();
-        return name.includes(searchQuery);
+        const haystack = normalizeSearchText(
+          `${p.name ?? ""} ${p.userId ?? ""}`,
+        );
+        return haystack.includes(searchQuery);
       }
       return true;
     })
