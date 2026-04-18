@@ -109,6 +109,8 @@ model Roster {
   lockedByUserId String?
   createdByUserId String?
   selectedEventId String?
+  importFilterPreset String    @default("classic")
+  playerSearchQuery String     @default("")
   raidHelperEventsCache Json?
   raidHelperParticipantsCache Json?
   raidHelperEventsCachedAt DateTime?

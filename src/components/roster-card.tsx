@@ -58,6 +58,8 @@ type RosterResponse = {
   };
   roster: {
     selectedEventId: string | null;
+    selectedImportFilterPreset: RaidHelperImportFilterPreset;
+    playerSearchQuery: string;
     enableSecondRoster: boolean;
     groups: RosterGroupData[];
     secondGroups: RosterGroupData[];
@@ -853,6 +855,56 @@ async function saveSelectedEventId(
       error?: string;
     } | null;
     throw new Error(err?.error ?? "Unable to save event.");
+  }
+
+  return res.json() as Promise<RosterResponse>;
+}
+
+async function saveSelectedImportFilterPreset(
+  sessionId: string | null,
+  selectedImportFilterPreset: RaidHelperImportFilterPreset,
+): Promise<RosterResponse> {
+  const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const res = await fetch(`/api/roster${suffix}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      selectedImportFilterPreset,
+      sessionId: sessionId ?? undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to save import filter preset.");
+  }
+
+  return res.json() as Promise<RosterResponse>;
+}
+
+async function saveSelectedPlayerSearchQuery(
+  sessionId: string | null,
+  selectedPlayerSearchQuery: string,
+): Promise<RosterResponse> {
+  const suffix = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const res = await fetch(`/api/roster${suffix}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      selectedPlayerSearchQuery,
+      sessionId: sessionId ?? undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    throw new Error(err?.error ?? "Unable to save player search query.");
   }
 
   return res.json() as Promise<RosterResponse>;
@@ -1715,6 +1767,29 @@ export function RosterCard() {
     },
   });
 
+  const selectedImportFilterPresetMutation = useMutation({
+    mutationFn: (preset: RaidHelperImportFilterPreset) =>
+      saveSelectedImportFilterPreset(activeSessionId, preset),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["roster", activeSessionId], updated);
+      setSelectedImportFilterPreset(updated.roster.selectedImportFilterPreset);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unknown error.");
+    },
+  });
+
+  const selectedPlayerSearchQueryMutation = useMutation({
+    mutationFn: (query: string) =>
+      saveSelectedPlayerSearchQuery(activeSessionId, query),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["roster", activeSessionId], updated);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Unknown error.");
+    },
+  });
+
   function handleGroupSaved(updated: RosterResponse) {
     queryClient.setQueryData(["roster", activeSessionId], updated);
   }
@@ -1864,6 +1939,13 @@ export function RosterCard() {
     }
   }
 
+  function handleImportFilterPresetChange(
+    nextPreset: RaidHelperImportFilterPreset,
+  ) {
+    setSelectedImportFilterPreset(nextPreset);
+    selectedImportFilterPresetMutation.mutate(nextPreset);
+  }
+
   useEffect(() => {
     if (activeSessionId) {
       return;
@@ -1880,6 +1962,58 @@ export function RosterCard() {
       setActiveSessionId(data.rosterSession.id);
     }
   }, [activeSessionId, data?.rosterSession?.id]);
+
+  useEffect(() => {
+    const persistedPreset =
+      data?.roster.selectedImportFilterPreset ?? "classic";
+
+    if (persistedPreset !== selectedImportFilterPreset) {
+      setSelectedImportFilterPreset(persistedPreset);
+    }
+  }, [data?.roster.selectedImportFilterPreset, selectedImportFilterPreset]);
+
+  useEffect(() => {
+    if (!activeSessionId || data?.rosterSession.id !== activeSessionId) {
+      return;
+    }
+
+    const persistedSearchQuery = data.roster.playerSearchQuery ?? "";
+
+    if (persistedSearchQuery !== playerSearch) {
+      setPlayerSearch(persistedSearchQuery);
+    }
+  }, [
+    activeSessionId,
+    data?.roster.playerSearchQuery,
+    data?.rosterSession.id,
+    playerSearch,
+  ]);
+
+  useEffect(() => {
+    if (!activeSessionId || data?.rosterSession.id !== activeSessionId) {
+      return;
+    }
+
+    const persistedSearchQuery = data.roster.playerSearchQuery ?? "";
+
+    if (playerSearch === persistedSearchQuery) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      selectedPlayerSearchQueryMutation.mutate(playerSearch);
+    }, 300);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    activeSessionId,
+    data?.roster.playerSearchQuery,
+    data?.rosterSession.id,
+    playerSearch,
+    selectedPlayerSearchQueryMutation,
+  ]);
 
   useEffect(() => {
     const events = eventsQuery.data?.events;
@@ -2600,10 +2734,11 @@ export function RosterCard() {
                 <select
                   value={selectedImportFilterPreset}
                   onChange={(e) =>
-                    setSelectedImportFilterPreset(
+                    handleImportFilterPresetChange(
                       e.target.value as RaidHelperImportFilterPreset,
                     )
                   }
+                  disabled={selectedImportFilterPresetMutation.isPending}
                   className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
                 >
                   <option value="classic">Classic</option>

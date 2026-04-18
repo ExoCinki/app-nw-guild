@@ -15,6 +15,14 @@ const SLOT_COUNT = 5;
 const PRIMARY_ROSTER_INDEX = 1;
 const SECONDARY_ROSTER_INDEX = 2;
 
+type RosterImportFilterPreset = "classic" | "euna";
+
+function normalizeImportFilterPreset(
+    value: string | null | undefined,
+): RosterImportFilterPreset {
+    return value === "euna" ? "euna" : "classic";
+}
+
 async function resolveGuildForUser(
     email: string,
     guildIdFromQuery: string | null,
@@ -127,6 +135,8 @@ function mapRosterResponse(input: {
     enableSecondRoster: boolean;
     dbRoster: {
         selectedEventId?: string | null;
+        importFilterPreset?: string | null;
+        playerSearchQuery?: string | null;
         groups: Array<{
             rosterIndex: number;
             groupNumber: number;
@@ -157,6 +167,10 @@ function mapRosterResponse(input: {
         },
         roster: {
             selectedEventId: input.dbRoster?.selectedEventId ?? null,
+            selectedImportFilterPreset: normalizeImportFilterPreset(
+                input.dbRoster?.importFilterPreset,
+            ),
+            playerSearchQuery: input.dbRoster?.playerSearchQuery ?? "",
             enableSecondRoster: input.enableSecondRoster,
             groups: buildNormalizedRoster(input.dbRoster, PRIMARY_ROSTER_INDEX),
             secondGroups: input.enableSecondRoster
@@ -201,6 +215,8 @@ export async function GET(request: Request) {
                 where: { id: rosterSession.id },
                 select: {
                     selectedEventId: true,
+                    importFilterPreset: true,
+                    playerSearchQuery: true,
                     groups: {
                         select: {
                             rosterIndex: true,
@@ -419,6 +435,8 @@ export async function POST(request: Request) {
             where: { id: rosterSession.id },
             select: {
                 selectedEventId: true,
+                importFilterPreset: true,
+                playerSearchQuery: true,
                 groups: {
                     select: {
                         rosterIndex: true,
@@ -457,6 +475,8 @@ export async function PATCH(request: Request) {
         guildId?: string;
         sessionId?: string;
         selectedEventId?: string | null;
+        selectedImportFilterPreset?: string;
+        selectedPlayerSearchQuery?: string;
     };
 
     const resolved = await resolveGuildForUser(
@@ -487,14 +507,76 @@ export async function PATCH(request: Request) {
         );
     }
 
+    const hasSelectedEventId = Object.prototype.hasOwnProperty.call(
+        payload,
+        "selectedEventId",
+    );
+    const hasSelectedImportFilterPreset = Object.prototype.hasOwnProperty.call(
+        payload,
+        "selectedImportFilterPreset",
+    );
+    const hasSelectedPlayerSearchQuery = Object.prototype.hasOwnProperty.call(
+        payload,
+        "selectedPlayerSearchQuery",
+    );
+
+    if (
+        !hasSelectedEventId &&
+        !hasSelectedImportFilterPreset &&
+        !hasSelectedPlayerSearchQuery
+    ) {
+        return NextResponse.json(
+            { error: "No updatable roster field provided" },
+            { status: 400 },
+        );
+    }
+
+    const updateData: {
+        selectedEventId?: string | null;
+        importFilterPreset?: RosterImportFilterPreset;
+        playerSearchQuery?: string;
+    } = {};
+
+    if (hasSelectedEventId) {
+        updateData.selectedEventId = (payload.selectedEventId ?? "").trim() || null;
+    }
+
+    if (hasSelectedImportFilterPreset) {
+        if (
+            payload.selectedImportFilterPreset !== "classic" &&
+            payload.selectedImportFilterPreset !== "euna"
+        ) {
+            return NextResponse.json(
+                {
+                    error:
+                        "selectedImportFilterPreset must be either 'classic' or 'euna'",
+                },
+                { status: 400 },
+            );
+        }
+
+        updateData.importFilterPreset = payload.selectedImportFilterPreset;
+    }
+
+    if (hasSelectedPlayerSearchQuery) {
+        if (typeof payload.selectedPlayerSearchQuery !== "string") {
+            return NextResponse.json(
+                { error: "selectedPlayerSearchQuery must be a string" },
+                { status: 400 },
+            );
+        }
+
+        updateData.playerSearchQuery = payload.selectedPlayerSearchQuery;
+    }
+
     const roster = await withApiTiming("PATCH /api/roster", () =>
         prisma.roster.update({
             where: { id: rosterSession.id },
-            data: {
-                selectedEventId: (payload.selectedEventId ?? "").trim() || null,
-            },
+            data: updateData,
             select: {
                 selectedEventId: true,
+                importFilterPreset: true,
+                playerSearchQuery: true,
                 groups: {
                     select: {
                         rosterIndex: true,
@@ -582,6 +664,8 @@ export async function DELETE(request: Request) {
                 where: { id: rosterSession.id },
                 select: {
                     selectedEventId: true,
+                    importFilterPreset: true,
+                    playerSearchQuery: true,
                     groups: {
                         select: {
                             rosterIndex: true,
