@@ -80,7 +80,8 @@ export function Navbar() {
   const isOwner = Boolean(session?.user?.isOwner);
   const canAccessAdmin = Boolean(isOwner || session?.user?.isGlobalAdmin);
   const access = meQuery.data?.access;
-  const isNavLoading = status === "authenticated" && meQuery.isLoading;
+  const isNavLoading =
+    status === "loading" || (status === "authenticated" && meQuery.isLoading);
   const canAccessRoster = Boolean(access?.roster);
   const canAccessPayout = Boolean(access?.payout);
   const canAccessScoreboard = Boolean(access?.scoreboard);
