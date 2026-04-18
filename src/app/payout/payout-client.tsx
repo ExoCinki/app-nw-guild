@@ -1,6 +1,5 @@
 "use client";
 
-import { LoadingIndicator } from "@/components/loading-indicator";
 import { PayoutDeleteSessionModal } from "./payout-delete-session-modal";
 import { PayoutEmptyState } from "./payout-empty-state";
 import { PayoutPlayersSection } from "./payout-players-section";
@@ -163,9 +162,48 @@ export default function PayoutClient() {
 
   if (loadingSessions) {
     return (
-      <div className="min-h-screen bg-slate-950 px-6 pb-6 pt-24 text-slate-100">
-        <div className="mx-auto max-w-7xl">
-          <LoadingIndicator />
+      <div className="min-h-screen bg-slate-950 text-slate-100 p-6">
+        <div className="mb-6 h-9 w-64 animate-pulse rounded bg-slate-800" />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Sidebar skeleton */}
+          <div className="space-y-4 lg:col-span-1">
+            <div className="h-7 w-24 animate-pulse rounded bg-slate-800" />
+            <div className="rounded border border-slate-700 bg-slate-900 p-4">
+              <div className="h-9 animate-pulse rounded bg-slate-700" />
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-[76px] animate-pulse rounded border border-slate-700 bg-slate-800"
+                />
+              ))}
+            </div>
+          </div>
+          {/* Detail skeleton */}
+          <div className="space-y-6 lg:col-span-2">
+            <div className="space-y-3 rounded border border-slate-700 bg-slate-900 p-4">
+              <div className="h-5 w-32 animate-pulse rounded bg-slate-700" />
+              <div className="h-10 animate-pulse rounded bg-slate-800" />
+              <div className="h-10 animate-pulse rounded bg-slate-800" />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-20 animate-pulse rounded border border-slate-700 bg-slate-900"
+                />
+              ))}
+            </div>
+            <div className="space-y-2 rounded border border-slate-700 bg-slate-900 p-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-10 animate-pulse rounded bg-slate-800"
+                />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -178,6 +216,7 @@ export default function PayoutClient() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <PayoutSessionsSidebar
           sessions={sessions}
+          isLoading={false}
           selectedSessionId={selectedSessionId}
           renamingSessionId={renamingSessionId}
           renameInput={renameInput}

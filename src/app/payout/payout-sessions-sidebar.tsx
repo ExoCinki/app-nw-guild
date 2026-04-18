@@ -18,6 +18,7 @@ type ShareStatus = {
 
 export function PayoutSessionsSidebar({
   sessions,
+  isLoading,
   selectedSessionId,
   renamingSessionId,
   renameInput,
@@ -37,6 +38,7 @@ export function PayoutSessionsSidebar({
   onRequestDelete,
 }: {
   sessions: PayoutSession[];
+  isLoading: boolean;
   selectedSessionId: string | null;
   renamingSessionId: string | null;
   renameInput: string;
@@ -61,18 +63,32 @@ export function PayoutSessionsSidebar({
         <h2 className="text-xl font-semibold mb-4">Sessions</h2>
 
         <div className="space-y-2 mb-4 p-4 bg-slate-900 rounded border border-slate-700">
-          <LoadingButton
-            onClick={onCreateSession}
-            isLoading={createSessionPending}
-            loadingText="Creating..."
-            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:cursor-not-allowed"
-          >
-            <FontAwesomeIcon icon={faPlus} /> New session
-          </LoadingButton>
+          {isLoading ? (
+            <div className="h-9 w-full animate-pulse rounded bg-slate-700" />
+          ) : (
+            <LoadingButton
+              onClick={onCreateSession}
+              isLoading={createSessionPending}
+              loadingText="Creating..."
+              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded disabled:cursor-not-allowed"
+            >
+              <FontAwesomeIcon icon={faPlus} /> New session
+            </LoadingButton>
+          )}
         </div>
 
         <div className="space-y-2">
-          {sessions.map((session) => {
+          {isLoading ? (
+            <>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-[76px] animate-pulse rounded border border-slate-700 bg-slate-800"
+                />
+              ))}
+            </>
+          ) : null}
+          {!isLoading && sessions.map((session) => {
             const shareStatus = getShareLinkStatus(session.id);
 
             return (

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -63,6 +64,16 @@ export function Navbar() {
   const { data: session, status } = useSession();
   const pathname = usePathname();
 
+  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+
+  // When the destination is reached, clear the navigating state (during render, no effect needed)
+  if (navigatingTo !== null && navigatingTo === pathname) {
+    setNavigatingTo(null);
+  }
+
+  const isNavigating = navigatingTo !== null && navigatingTo !== pathname;
+  const handleNavClick = (href: string) => setNavigatingTo(href);
+
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
@@ -93,7 +104,12 @@ export function Navbar() {
     pathname === path ? "text-sky-400" : "text-slate-300 hover:text-slate-100";
 
   return (
-    <nav className="border-b border-slate-800 bg-slate-900/80 backdrop-blur">
+    <nav className="relative border-b border-slate-800 bg-slate-900/80 backdrop-blur">
+      {isNavigating && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden">
+          <div className="h-full w-2/3 animate-pulse bg-sky-400" />
+        </div>
+      )}
       <div className="mx-auto max-w-7xl px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-8">
@@ -113,6 +129,7 @@ export function Navbar() {
             <Link
               href="/"
               className={`text-sm font-medium transition ${isActive("/")}`}
+              onClick={() => handleNavClick("/")}
             >
               Home
             </Link>
@@ -128,6 +145,7 @@ export function Navbar() {
               <Link
                 href="/roster"
                 className={`text-sm font-medium transition ${isActive("/roster")}`}
+                onClick={() => handleNavClick("/roster")}
               >
                 Roster
               </Link>
@@ -136,6 +154,7 @@ export function Navbar() {
               <Link
                 href="/payout"
                 className={`text-sm font-medium transition ${isActive("/payout")}`}
+                onClick={() => handleNavClick("/payout")}
               >
                 Payout
               </Link>
@@ -144,6 +163,7 @@ export function Navbar() {
               <Link
                 href="/scoreboard"
                 className={`text-sm font-medium transition ${isActive("/scoreboard")}`}
+                onClick={() => handleNavClick("/scoreboard")}
               >
                 Scoreboard
               </Link>
@@ -152,6 +172,7 @@ export function Navbar() {
               <Link
                 href="/archives"
                 className={`text-sm font-medium transition ${isActive("/archives")}`}
+                onClick={() => handleNavClick("/archives")}
               >
                 Archives
               </Link>
@@ -203,6 +224,7 @@ export function Navbar() {
                   <Link
                     href="/configuration"
                     className={`text-sm font-medium transition ${isActive("/configuration")}`}
+                    onClick={() => handleNavClick("/configuration")}
                   >
                     Configuration
                   </Link>
@@ -213,6 +235,7 @@ export function Navbar() {
                 <Link
                   href="/admin"
                   className={`text-sm font-medium transition ${isActive("/admin")}`}
+                  onClick={() => handleNavClick("/admin")}
                 >
                   Administration
                 </Link>
