@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
+import { parseIdListFromString } from "@/lib/config-lists";
 
 export const dynamic = "force-dynamic";
 
@@ -113,10 +114,10 @@ export const GET = apiHandler("GET /api/discord/users/search", async (request: N
         select: { zooMemberRoleId: true },
     });
 
-    const zooRoleId = guildConfig?.zooMemberRoleId;
+    const configuredRoleIds = parseIdListFromString(guildConfig?.zooMemberRoleId);
 
     // Check cache
-    const cacheKey = `${guildId}:${query}:${zooRoleId || "any"}`;
+    const cacheKey = `${guildId}:${query}:${configuredRoleIds.join("|") || "any"}`;
     const cached = userSearchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
         return NextResponse.json(cached.results);
@@ -188,9 +189,12 @@ export const GET = apiHandler("GET /api/discord/users/search", async (request: N
             members = (await membersRes.json()) as DiscordMember[];
 
             // If Zoo role is set, filter members by that role
-            if (zooRoleId) {
-                members = members.filter((m) =>
-                    m.roles && m.roles.includes(zooRoleId)
+            if (configuredRoleIds.length > 0) {
+                const configuredRoleSet = new Set(configuredRoleIds);
+                members = members.filter(
+                    (m) =>
+                        Array.isArray(m.roles) &&
+                        m.roles.some((roleId) => configuredRoleSet.has(roleId)),
                 );
             }
         } catch {

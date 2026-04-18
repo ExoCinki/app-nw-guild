@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getAdminGuardStatus } from "@/lib/admin-access";
 import { withApiTiming } from "@/lib/api-timing";
 import { getDiscordGuildRoles } from "@/lib/discord-guild-roles";
+import { firstId, parseIdListFromString, parseIdListInput, serializeIdList } from "@/lib/config-lists";
 
 export const dynamic = "force-dynamic";
 
@@ -149,7 +150,30 @@ export async function GET(request: NextRequest) {
         ]),
     );
 
-    return NextResponse.json({ guilds, users, accesses, bans, configurations, globalAdmins });
+    const normalizedConfigurations = configurations.map((configuration) => {
+        const channelIds = parseIdListFromString(configuration.channelId);
+        const roleIds = parseIdListFromString(configuration.zooMemberRoleId);
+        const roleNames = parseIdListFromString(configuration.zooMemberRoleName);
+
+        return {
+            ...configuration,
+            channelId: firstId(channelIds),
+            channelIds,
+            zooMemberRoleId: firstId(roleIds),
+            zooMemberRoleIds: roleIds,
+            zooMemberRoleName: firstId(roleNames),
+            zooMemberRoleNames: roleNames,
+        };
+    });
+
+    return NextResponse.json({
+        guilds,
+        users,
+        accesses,
+        bans,
+        configurations: normalizedConfigurations,
+        globalAdmins,
+    });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -184,8 +208,10 @@ export async function PATCH(request: NextRequest) {
             guildId?: string;
             apiKey?: string;
             channelId?: string;
+            channelIds?: unknown;
             enableSecondRoster?: boolean;
             zooMemberRoleId?: string;
+            zooMemberRoleIds?: unknown;
             zooMemberRoleName?: string;
             warsCount?: number;
             racesCount?: number;
@@ -413,8 +439,10 @@ export async function PATCH(request: NextRequest) {
         guildId?: string;
         apiKey?: string;
         channelId?: string;
+        channelIds?: unknown;
         enableSecondRoster?: boolean;
         zooMemberRoleId?: string;
+        zooMemberRoleIds?: unknown;
         zooMemberRoleName?: string;
         warsCount?: number;
         racesCount?: number;
@@ -503,15 +531,21 @@ export async function PATCH(request: NextRequest) {
         );
     }
 
-    let zooMemberRoleId = existing?.zooMemberRoleId ?? null;
-    let zooMemberRoleName = existing?.zooMemberRoleName ?? null;
+    const shouldUpdateRoleIds =
+        Object.prototype.hasOwnProperty.call(configPayload, "zooMemberRoleIds") ||
+        Object.prototype.hasOwnProperty.call(configPayload, "zooMemberRoleId");
 
-    if (Object.prototype.hasOwnProperty.call(configPayload, "zooMemberRoleId")) {
-        const incomingRoleId = (configPayload.zooMemberRoleId ?? "").trim();
+    let configuredRoleIds = parseIdListFromString(existing?.zooMemberRoleId);
+    let configuredRoleNames = parseIdListFromString(existing?.zooMemberRoleName);
 
-        if (!incomingRoleId) {
-            zooMemberRoleId = null;
-            zooMemberRoleName = null;
+    if (shouldUpdateRoleIds) {
+        const incomingRoleIds = Object.prototype.hasOwnProperty.call(configPayload, "zooMemberRoleIds")
+            ? parseIdListInput(configPayload.zooMemberRoleIds)
+            : parseIdListInput(configPayload.zooMemberRoleId);
+
+        if (incomingRoleIds.length === 0) {
+            configuredRoleIds = [];
+            configuredRoleNames = [];
         } else {
             const { roles, rolesError } = await getDiscordGuildRoles(guildId);
 
@@ -519,19 +553,30 @@ export async function PATCH(request: NextRequest) {
                 return NextResponse.json({ error: rolesError }, { status: 503 });
             }
 
-            const selectedRole = roles.find((role) => role.id === incomingRoleId);
+            const roleById = new Map(roles.map((role) => [role.id, role.name]));
+            const missingRoleId = incomingRoleIds.find((roleId) => !roleById.has(roleId));
 
-            if (!selectedRole) {
+            if (missingRoleId) {
                 return NextResponse.json(
-                    { error: "The selected role was not found on this server." },
+                    { error: `The role ${missingRoleId} was not found on this server.` },
                     { status: 400 },
                 );
             }
 
-            zooMemberRoleId = incomingRoleId;
-            zooMemberRoleName = selectedRole.name;
+            configuredRoleIds = incomingRoleIds;
+            configuredRoleNames = incomingRoleIds.map((roleId) => roleById.get(roleId) as string);
         }
     }
+
+    const shouldUpdateChannelIds =
+        Object.prototype.hasOwnProperty.call(configPayload, "channelIds") ||
+        Object.prototype.hasOwnProperty.call(configPayload, "channelId");
+
+    const channelIds = shouldUpdateChannelIds
+        ? Object.prototype.hasOwnProperty.call(configPayload, "channelIds")
+            ? parseIdListInput(configPayload.channelIds)
+            : parseIdListInput(configPayload.channelId)
+        : parseIdListFromString(existing?.channelId);
 
     const saved = await prisma.guildConfiguration.upsert({
         where: { discordGuildId: guildId },
@@ -539,12 +584,12 @@ export async function PATCH(request: NextRequest) {
             ...(Object.prototype.hasOwnProperty.call(configPayload, "apiKey") && {
                 apiKey: (configPayload.apiKey ?? "").trim() || null,
             }),
-            ...(Object.prototype.hasOwnProperty.call(configPayload, "channelId") && {
-                channelId: (configPayload.channelId ?? "").trim() || null,
+            ...(shouldUpdateChannelIds && {
+                channelId: serializeIdList(channelIds),
             }),
             enableSecondRoster,
-            zooMemberRoleId,
-            zooMemberRoleName,
+            zooMemberRoleId: serializeIdList(configuredRoleIds),
+            zooMemberRoleName: serializeIdList(configuredRoleNames),
             warsCount,
             racesCount,
             invasionsCount,
@@ -555,10 +600,10 @@ export async function PATCH(request: NextRequest) {
         create: {
             discordGuildId: guildId,
             apiKey: (configPayload.apiKey ?? "").trim() || null,
-            channelId: (configPayload.channelId ?? "").trim() || null,
+            channelId: serializeIdList(channelIds),
             enableSecondRoster,
-            zooMemberRoleId,
-            zooMemberRoleName,
+            zooMemberRoleId: serializeIdList(configuredRoleIds),
+            zooMemberRoleName: serializeIdList(configuredRoleNames),
             warsCount,
             racesCount,
             invasionsCount,

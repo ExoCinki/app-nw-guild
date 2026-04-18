@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { hasGuildScopeAccess, type GuildAccessMode } from "@/lib/admin-access";
 import { getDiscordGuildRoles } from "@/lib/discord-guild-roles";
+import { firstId, parseIdListFromString, parseIdListInput, serializeIdList } from "@/lib/config-lists";
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +132,10 @@ export async function GET(request: Request) {
 
     const { roles, rolesError } = await getDiscordGuildRoles(resolved.guildId);
 
+    const configuredChannelIds = parseIdListFromString(config?.channelId);
+    const configuredRoleIds = parseIdListFromString(config?.zooMemberRoleId);
+    const configuredRoleNames = parseIdListFromString(config?.zooMemberRoleName);
+
     return NextResponse.json({
         guild: {
             id: resolved.guildId,
@@ -140,10 +145,13 @@ export async function GET(request: Request) {
         rolesError,
         configuration: {
             apiKey: config?.apiKey ?? "",
-            channelId: config?.channelId ?? "",
+            channelId: firstId(configuredChannelIds) ?? "",
+            channelIds: configuredChannelIds,
             enableSecondRoster: config?.enableSecondRoster ?? false,
-            zooMemberRoleId: config?.zooMemberRoleId ?? "",
-            zooMemberRoleName: config?.zooMemberRoleName ?? "",
+            zooMemberRoleId: firstId(configuredRoleIds) ?? "",
+            zooMemberRoleIds: configuredRoleIds,
+            zooMemberRoleName: firstId(configuredRoleNames) ?? "",
+            zooMemberRoleNames: configuredRoleNames,
             warsCount: config?.warsCount ?? 0,
             racesCount: config?.racesCount ?? 0,
             invasionsCount: config?.invasionsCount ?? 0,
@@ -166,8 +174,10 @@ export async function POST(request: Request) {
         guildId?: string;
         apiKey?: string;
         channelId?: string;
+        channelIds?: unknown;
         enableSecondRoster?: boolean;
         zooMemberRoleId?: string | null;
+        zooMemberRoleIds?: unknown;
         warsCount?: number;
         racesCount?: number;
         invasionsCount?: number;
@@ -205,6 +215,7 @@ export async function POST(request: Request) {
 
     const hasApiKey = Object.prototype.hasOwnProperty.call(payload, "apiKey");
     const hasChannelId = Object.prototype.hasOwnProperty.call(payload, "channelId");
+    const hasChannelIds = Object.prototype.hasOwnProperty.call(payload, "channelIds");
     const hasEnableSecondRoster = Object.prototype.hasOwnProperty.call(
         payload,
         "enableSecondRoster",
@@ -212,6 +223,10 @@ export async function POST(request: Request) {
     const hasZooMemberRoleId = Object.prototype.hasOwnProperty.call(
         payload,
         "zooMemberRoleId",
+    );
+    const hasZooMemberRoleIds = Object.prototype.hasOwnProperty.call(
+        payload,
+        "zooMemberRoleIds",
     );
     const hasWarsCount = Object.prototype.hasOwnProperty.call(payload, "warsCount");
     const hasRacesCount = Object.prototype.hasOwnProperty.call(payload, "racesCount");
@@ -223,9 +238,11 @@ export async function POST(request: Request) {
     const apiKey = hasApiKey
         ? (payload.apiKey ?? "").trim() || null
         : existing?.apiKey ?? null;
-    const channelId = hasChannelId
-        ? (payload.channelId ?? "").trim() || null
-        : existing?.channelId ?? null;
+    const channelIds = hasChannelIds
+        ? parseIdListInput(payload.channelIds)
+        : hasChannelId
+            ? parseIdListInput(payload.channelId)
+            : parseIdListFromString(existing?.channelId);
 
     let enableSecondRoster = existing?.enableSecondRoster ?? false;
 
@@ -278,15 +295,18 @@ export async function POST(request: Request) {
         );
     }
 
-    let zooMemberRoleId = existing?.zooMemberRoleId ?? null;
-    let zooMemberRoleName = existing?.zooMemberRoleName ?? null;
+    const shouldUpdateRoleIds = hasZooMemberRoleIds || hasZooMemberRoleId;
+    let configuredRoleIds = parseIdListFromString(existing?.zooMemberRoleId);
+    let configuredRoleNames = parseIdListFromString(existing?.zooMemberRoleName);
 
-    if (hasZooMemberRoleId) {
-        const incomingRoleId = (payload.zooMemberRoleId ?? "").trim();
+    if (shouldUpdateRoleIds) {
+        const incomingRoleIds = hasZooMemberRoleIds
+            ? parseIdListInput(payload.zooMemberRoleIds)
+            : parseIdListInput(payload.zooMemberRoleId);
 
-        if (!incomingRoleId) {
-            zooMemberRoleId = null;
-            zooMemberRoleName = null;
+        if (incomingRoleIds.length === 0) {
+            configuredRoleIds = [];
+            configuredRoleNames = [];
         } else {
             const { roles, rolesError } = await getDiscordGuildRoles(resolved.guildId);
 
@@ -299,19 +319,20 @@ export async function POST(request: Request) {
                 );
             }
 
-            const selectedRole = roles.find((role) => role.id === incomingRoleId);
+            const roleById = new Map(roles.map((role) => [role.id, role.name]));
+            const missingRoleId = incomingRoleIds.find((roleId) => !roleById.has(roleId));
 
-            if (!selectedRole) {
+            if (missingRoleId) {
                 return NextResponse.json(
                     {
-                        error: "The selected role was not found on this server.",
+                        error: `The role ${missingRoleId} was not found on this server.`,
                     },
                     { status: 400 },
                 );
             }
 
-            zooMemberRoleId = incomingRoleId;
-            zooMemberRoleName = selectedRole.name;
+            configuredRoleIds = incomingRoleIds;
+            configuredRoleNames = incomingRoleIds.map((roleId) => roleById.get(roleId) as string);
         }
     }
 
@@ -319,10 +340,10 @@ export async function POST(request: Request) {
         where: { discordGuildId: resolved.guildId },
         update: {
             apiKey,
-            channelId,
+            channelId: serializeIdList(channelIds),
             enableSecondRoster,
-            zooMemberRoleId,
-            zooMemberRoleName,
+            zooMemberRoleId: serializeIdList(configuredRoleIds),
+            zooMemberRoleName: serializeIdList(configuredRoleNames),
             warsCount,
             racesCount,
             invasionsCount,
@@ -333,10 +354,10 @@ export async function POST(request: Request) {
         create: {
             discordGuildId: resolved.guildId,
             apiKey,
-            channelId,
+            channelId: serializeIdList(channelIds),
             enableSecondRoster,
-            zooMemberRoleId,
-            zooMemberRoleName,
+            zooMemberRoleId: serializeIdList(configuredRoleIds),
+            zooMemberRoleName: serializeIdList(configuredRoleNames),
             warsCount,
             racesCount,
             invasionsCount,
@@ -362,6 +383,10 @@ export async function POST(request: Request) {
 
     const { roles, rolesError } = await getDiscordGuildRoles(resolved.guildId);
 
+    const savedChannelIds = parseIdListFromString(saved.channelId);
+    const savedRoleIds = parseIdListFromString(saved.zooMemberRoleId);
+    const savedRoleNames = parseIdListFromString(saved.zooMemberRoleName);
+
     return NextResponse.json({
         guild: {
             id: resolved.guildId,
@@ -371,10 +396,13 @@ export async function POST(request: Request) {
         rolesError,
         configuration: {
             apiKey: saved.apiKey ?? "",
-            channelId: saved.channelId ?? "",
+            channelId: firstId(savedChannelIds) ?? "",
+            channelIds: savedChannelIds,
             enableSecondRoster: saved.enableSecondRoster,
-            zooMemberRoleId: saved.zooMemberRoleId ?? "",
-            zooMemberRoleName: saved.zooMemberRoleName ?? "",
+            zooMemberRoleId: firstId(savedRoleIds) ?? "",
+            zooMemberRoleIds: savedRoleIds,
+            zooMemberRoleName: firstId(savedRoleNames) ?? "",
+            zooMemberRoleNames: savedRoleNames,
             warsCount: saved.warsCount,
             racesCount: saved.racesCount,
             invasionsCount: saved.invasionsCount,

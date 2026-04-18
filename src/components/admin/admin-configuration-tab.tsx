@@ -11,6 +11,7 @@ import type {
 } from "@/components/admin/admin-types";
 import { queryPresets } from "@/lib/query-presets";
 import { apiFetch } from "@/lib/http-client";
+import { parseIdListFromString } from "@/lib/config-lists";
 
 type AdminGuildRolesResponse = {
   roles: Array<{
@@ -38,9 +39,9 @@ type Props = {
 
 type EditableFieldKey =
   | "apiKey"
-  | "channelId"
+  | "channelIds"
   | "enableSecondRoster"
-  | "zooMemberRoleId"
+  | "zooMemberRoleIds"
   | "warsCount"
   | "racesCount"
   | "invasionsCount"
@@ -115,9 +116,10 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
   const [configGuildId, setConfigGuildId] = useState("");
 
   const [apiKey, setApiKey] = useState("");
-  const [channelId, setChannelId] = useState("");
+  const [channelIdsInput, setChannelIdsInput] = useState("");
   const [enableSecondRoster, setEnableSecondRoster] = useState(false);
-  const [zooMemberRoleId, setZooMemberRoleId] = useState("");
+  const [zooMemberRoleIds, setZooMemberRoleIds] = useState<string[]>([]);
+  const [roleToAdd, setRoleToAdd] = useState("");
   const [warsCount, setWarsCount] = useState("0");
   const [racesCount, setRacesCount] = useState("0");
   const [invasionsCount, setInvasionsCount] = useState("0");
@@ -149,11 +151,39 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     ...queryPresets.mediumLived,
   });
 
+  function resolveChannelIds(config: AdminConfiguration | undefined) {
+    if (!config) {
+      return [];
+    }
+
+    if (Array.isArray(config.channelIds) && config.channelIds.length > 0) {
+      return config.channelIds;
+    }
+
+    return parseIdListFromString(config.channelId);
+  }
+
+  function resolveRoleIds(config: AdminConfiguration | undefined) {
+    if (!config) {
+      return [];
+    }
+
+    if (
+      Array.isArray(config.zooMemberRoleIds) &&
+      config.zooMemberRoleIds.length > 0
+    ) {
+      return config.zooMemberRoleIds;
+    }
+
+    return parseIdListFromString(config.zooMemberRoleId);
+  }
+
   useEffect(() => {
     setApiKey(selectedConfig?.apiKey ?? "");
-    setChannelId(selectedConfig?.channelId ?? "");
+    setChannelIdsInput(resolveChannelIds(selectedConfig).join(", "));
     setEnableSecondRoster(selectedConfig?.enableSecondRoster ?? false);
-    setZooMemberRoleId(selectedConfig?.zooMemberRoleId ?? "");
+    setZooMemberRoleIds(resolveRoleIds(selectedConfig));
+    setRoleToAdd("");
     setWarsCount(String(selectedConfig?.warsCount ?? 0));
     setRacesCount(String(selectedConfig?.racesCount ?? 0));
     setInvasionsCount(String(selectedConfig?.invasionsCount ?? 0));
@@ -167,9 +197,9 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
     mutationFn: async (payload: {
       guildId: string;
       apiKey: string;
-      channelId: string;
+      channelIds: string[];
       enableSecondRoster: boolean;
-      zooMemberRoleId: string;
+      zooMemberRoleIds: string[];
       warsCount: number;
       racesCount: number;
       invasionsCount: number;
@@ -196,23 +226,49 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
 
   const roles = rolesQuery.data?.roles ?? [];
   const rolesError = rolesQuery.data?.rolesError;
-  const selectedRoleExists = roles.some((role) => role.id === zooMemberRoleId);
+  const savedRoleNames = selectedConfig?.zooMemberRoleNames ?? [];
+  const roleById = new Map(roles.map((role) => [role.id, role.name]));
+  const selectedRoleItems = zooMemberRoleIds.map((roleId, index) => ({
+    id: roleId,
+    name: roleById.get(roleId) ?? savedRoleNames[index] ?? roleId,
+    missing: !roleById.has(roleId),
+  }));
+  const addableRoles = roles.filter(
+    (role) => !zooMemberRoleIds.includes(role.id),
+  );
+
+  function handleAddRole() {
+    if (!roleToAdd) {
+      return;
+    }
+
+    setZooMemberRoleIds((previous) =>
+      previous.includes(roleToAdd) ? previous : [...previous, roleToAdd],
+    );
+    setRoleToAdd("");
+  }
+
+  function handleRemoveRole(roleId: string) {
+    setZooMemberRoleIds((previous) =>
+      previous.filter((currentRoleId) => currentRoleId !== roleId),
+    );
+  }
 
   function resetField(field: EditableFieldKey) {
     if (field === "apiKey") {
       setApiKey(selectedConfig?.apiKey ?? "");
       return;
     }
-    if (field === "channelId") {
-      setChannelId(selectedConfig?.channelId ?? "");
+    if (field === "channelIds") {
+      setChannelIdsInput(resolveChannelIds(selectedConfig).join(", "));
       return;
     }
     if (field === "enableSecondRoster") {
       setEnableSecondRoster(selectedConfig?.enableSecondRoster ?? false);
       return;
     }
-    if (field === "zooMemberRoleId") {
-      setZooMemberRoleId(selectedConfig?.zooMemberRoleId ?? "");
+    if (field === "zooMemberRoleIds") {
+      setZooMemberRoleIds(resolveRoleIds(selectedConfig));
       return;
     }
     if (field === "warsCount") {
@@ -282,9 +338,9 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
       await configMutation.mutateAsync({
         guildId: resolvedConfigGuildId,
         apiKey,
-        channelId,
+        channelIds: parseIdListFromString(channelIdsInput),
         enableSecondRoster,
-        zooMemberRoleId,
+        zooMemberRoleIds,
         warsCount: parsedWars,
         racesCount: parsedRaces,
         invasionsCount: parsedInvasions,
@@ -365,32 +421,35 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
             htmlFor="admin-cfg-channelId"
             className="mb-2 block text-sm font-medium text-slate-300"
           >
-            Discord Channel ID
+            Discord Channel IDs
           </label>
           <div className="flex items-center gap-2">
             <input
               id="admin-cfg-channelId"
-              value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
-              placeholder="ex: 123456789012345678"
+              value={channelIdsInput}
+              onChange={(e) => setChannelIdsInput(e.target.value)}
+              placeholder="ex: 123456789012345678, 987654321098765432"
               disabled={
-                editingField !== "channelId" || pendingField === "channelId"
+                editingField !== "channelIds" || pendingField === "channelIds"
               }
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
             />
             <EditButtons
-              isEditing={editingField === "channelId"}
-              isPending={pendingField === "channelId"}
+              isEditing={editingField === "channelIds"}
+              isPending={pendingField === "channelIds"}
               onSave={() => {
-                void saveField("channelId");
+                void saveField("channelIds");
               }}
               onCancel={() => {
-                resetField("channelId");
+                resetField("channelIds");
                 setEditingField(null);
               }}
-              onEdit={() => setEditingField("channelId")}
+              onEdit={() => setEditingField("channelIds")}
             />
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Separate channel IDs with commas.
+          </p>
         </div>
 
         <div>
@@ -438,46 +497,102 @@ export function AdminConfigurationTab({ guilds, configurations }: Props) {
             htmlFor="admin-cfg-zooMemberRoleId"
             className="mb-2 block text-sm font-medium text-slate-300"
           >
-            Role membre
+            Member roles
           </label>
-          <div className="flex items-center gap-2">
-            <select
-              id="admin-cfg-zooMemberRoleId"
-              value={zooMemberRoleId}
-              onChange={(e) => setZooMemberRoleId(e.target.value)}
-              disabled={
-                editingField !== "zooMemberRoleId" ||
-                pendingField === "zooMemberRoleId" ||
-                rolesQuery.isLoading
-              }
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
-            >
-              <option value="">-- Aucun role --</option>
-              {!selectedRoleExists && zooMemberRoleId ? (
-                <option value={zooMemberRoleId}>
-                  {selectedConfig?.zooMemberRoleName || zooMemberRoleId}{" "}
-                  (introuvable)
-                </option>
-              ) : null}
-              {roles.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.name}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-2">
+            <div className="min-h-12 rounded-lg border border-slate-700 bg-slate-800 px-2 py-2">
+              {selectedRoleItems.length === 0 ? (
+                <p className="px-1 py-1 text-xs text-slate-500">
+                  No role selected.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {selectedRoleItems.map((role) => (
+                    <span
+                      key={role.id}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        role.missing
+                          ? "border-amber-500/60 bg-amber-500/10 text-amber-200"
+                          : "border-sky-500/50 bg-sky-500/10 text-sky-200"
+                      }`}
+                    >
+                      <span>{role.name}</span>
+                      {editingField === "zooMemberRoleIds" &&
+                      pendingField !== "zooMemberRoleIds" ? (
+                        <button
+                          type="button"
+                          className="-mr-0.5 rounded-full p-0.5 opacity-60 transition-opacity hover:opacity-100"
+                          onClick={() => handleRemoveRole(role.id)}
+                          aria-label={`Remove role ${role.name}`}
+                        >
+                          <FontAwesomeIcon
+                            icon={faXmark}
+                            className="h-2.5 w-2.5"
+                          />
+                        </button>
+                      ) : null}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                id="admin-cfg-zooMemberRoleId"
+                value={roleToAdd}
+                onChange={(event) => setRoleToAdd(event.target.value)}
+                disabled={
+                  editingField !== "zooMemberRoleIds" ||
+                  pendingField === "zooMemberRoleIds" ||
+                  rolesQuery.isLoading
+                }
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-70"
+              >
+                <option value="">-- Select a role to add --</option>
+                {addableRoles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddRole}
+                disabled={
+                  editingField !== "zooMemberRoleIds" ||
+                  pendingField === "zooMemberRoleIds" ||
+                  rolesQuery.isLoading ||
+                  !roleToAdd
+                }
+                className="rounded-md border border-slate-600 px-3 py-2 text-xs text-slate-200 transition hover:border-sky-500 hover:text-sky-200 disabled:opacity-40"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 flex justify-end">
             <EditButtons
-              isEditing={editingField === "zooMemberRoleId"}
-              isPending={pendingField === "zooMemberRoleId"}
+              isEditing={editingField === "zooMemberRoleIds"}
+              isPending={pendingField === "zooMemberRoleIds"}
               onSave={() => {
-                void saveField("zooMemberRoleId");
+                void saveField("zooMemberRoleIds");
               }}
               onCancel={() => {
-                resetField("zooMemberRoleId");
+                resetField("zooMemberRoleIds");
                 setEditingField(null);
               }}
-              onEdit={() => setEditingField("zooMemberRoleId")}
+              onEdit={() => setEditingField("zooMemberRoleIds")}
             />
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Add roles one by one. Click × on a tag to remove it.
+          </p>
+          {selectedRoleItems.some((role) => role.missing) ? (
+            <p className="mt-2 text-xs text-amber-300">
+              Some saved roles are missing from this server.
+            </p>
+          ) : null}
           {rolesError ? (
             <p className="mt-2 text-xs text-amber-300">{rolesError}</p>
           ) : null}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { publishLiveUpdate } from "@/lib/live-updates";
 import { apiHandler, requireAuth, requireGuildAuth } from "@/lib/route-guard";
+import { parseIdListFromString } from "@/lib/config-lists";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,9 @@ export const POST = apiHandler("POST /api/payout/import-zoo-role", async (reques
         select: { zooMemberRoleId: true },
     });
 
-    if (!config?.zooMemberRoleId) {
+    const configuredRoleIds = parseIdListFromString(config?.zooMemberRoleId);
+
+    if (configuredRoleIds.length === 0) {
         return NextResponse.json(
             { error: "Zoo member role is not configured for this server. Set it in Configuration first." },
             { status: 400 },
@@ -103,9 +106,14 @@ export const POST = apiHandler("POST /api/payout/import-zoo-role", async (reques
         );
     }
 
-    const zooMembers = members.filter(
-        (member) => member.roles?.includes(config.zooMemberRoleId as string) && !member.user.bot,
-    );
+    const roleSet = new Set(configuredRoleIds);
+    const zooMembers = members.filter((member) => {
+        if (member.user.bot) {
+            return false;
+        }
+
+        return Array.isArray(member.roles) && member.roles.some((roleId) => roleSet.has(roleId));
+    });
 
     if (zooMembers.length === 0) {
         return NextResponse.json({ imported: 0, matched: 0 });

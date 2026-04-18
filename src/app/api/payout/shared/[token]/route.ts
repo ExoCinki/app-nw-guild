@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { firstId, parseIdListFromString } from "@/lib/config-lists";
 
 export const dynamic = "force-dynamic";
 const SHARE_LINK_TTL_DAYS = 30;
@@ -86,6 +87,9 @@ export async function GET(
             vods: resolveMultiplier(guildConfiguration?.vodsCount),
         };
 
+        const configuredRoleIds = parseIdListFromString(guildConfiguration?.zooMemberRoleId);
+        const configuredRoleNames = parseIdListFromString(guildConfiguration?.zooMemberRoleName);
+
         const entries = share.session.entries.map((entry) => {
             const points =
                 entry.wars * multipliers.wars +
@@ -124,8 +128,8 @@ export async function GET(
                 goldPerPoint,
             },
             accessRole: {
-                id: guildConfiguration?.zooMemberRoleId ?? null,
-                name: guildConfiguration?.zooMemberRoleName ?? null,
+                id: firstId(configuredRoleIds),
+                name: firstId(configuredRoleNames),
             },
             entries: entries.map((entry) => ({
                 ...entry,

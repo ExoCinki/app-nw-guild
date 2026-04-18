@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getManagedWhitelistedGuilds } from "@/lib/managed-guilds";
 import { withApiTiming } from "@/lib/api-timing";
 import { resolveRosterSession } from "@/lib/roster-session";
+import { firstId, parseIdListFromString } from "@/lib/config-lists";
 
 export const dynamic = "force-dynamic";
 
@@ -259,6 +260,15 @@ export async function GET(request: Request) {
         );
     }
 
+    const configuredChannelIds = parseIdListFromString(config.channelId);
+
+    if (configuredChannelIds.length === 0) {
+        return NextResponse.json(
+            { error: "No channel ID configured for this server." },
+            { status: 422 },
+        );
+    }
+
     const rosterSession = await resolveRosterSession({
         guildId,
         userId: user.id,
@@ -319,7 +329,7 @@ export async function GET(request: Request) {
 
         const detailChannelId = getString(eventPayload.channelId);
 
-        if (detailChannelId && detailChannelId !== config.channelId) {
+        if (detailChannelId && !configuredChannelIds.includes(detailChannelId)) {
             return NextResponse.json(
                 { error: "This event does not match the configured channel." },
                 { status: 400 },
@@ -388,7 +398,8 @@ export async function GET(request: Request) {
         if (cachedEvents) {
             return NextResponse.json({
                 events: cachedEvents,
-                channelId: config.channelId,
+                channelId: firstId(configuredChannelIds),
+                channelIds: configuredChannelIds,
                 eventsCachedAt: rosterCache?.raidHelperEventsCachedAt,
             });
         }
@@ -422,9 +433,8 @@ export async function GET(request: Request) {
 
     const allEvents = rhData.postedEvents ?? [];
 
-    const filtered = allEvents.filter(
-        (event) => event.channelId === config.channelId,
-    );
+    const channelSet = new Set(configuredChannelIds);
+    const filtered = allEvents.filter((event) => channelSet.has(event.channelId));
 
     filtered.sort((a, b) => a.startTime - b.startTime);
 
@@ -434,7 +444,7 @@ export async function GET(request: Request) {
         prisma.roster.update({
             where: { id: rosterSession.id },
             data: {
-                raidHelperEventsCache: filtered as any,
+                raidHelperEventsCache: filtered as Prisma.InputJsonValue,
                 raidHelperEventsCachedAt: eventsCachedAt,
             },
         }),
@@ -442,7 +452,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
         events: filtered,
-        channelId: config.channelId,
+        channelId: firstId(configuredChannelIds),
+        channelIds: configuredChannelIds,
         eventsCachedAt,
     });
 }
