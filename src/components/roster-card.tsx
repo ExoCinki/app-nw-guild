@@ -2343,6 +2343,7 @@ export function RosterCard() {
   const mercPlayersCount = Object.values(mercFlags).filter(Boolean).length;
 
   const allParticipants = participantsQuery.data?.participants ?? [];
+  const totalParticipantsCount = allParticipants.length;
   const roleCounts: Partial<Record<string, number>> = {};
 
   for (const participant of allParticipants) {
@@ -2640,7 +2641,7 @@ export function RosterCard() {
             <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40">
               <div className="border-b border-slate-800 px-3 py-2 flex items-center justify-between">
                 <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Players
+                  Players ({totalParticipantsCount})
                 </h3>
                 <div className="flex items-center gap-2">
                   {mercPlayersCount > 0 && (
