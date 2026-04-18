@@ -16,7 +16,10 @@ export const GET = apiHandler("GET /api/scoreboard/sessions", async (request: Ne
     const sessions = await withApiTiming("GET /api/scoreboard/sessions", () =>
         prisma.scoreboardSession.findMany({
             where: { discordGuildId: guild.resolved.guildId },
-            include: { entries: { orderBy: { playerName: "asc" } } },
+            include: {
+                entries: { orderBy: { playerName: "asc" } },
+                shares: { select: { shareUrl: true, updatedAt: true } },
+            },
             orderBy: { createdAt: "desc" },
         }),
     );
@@ -38,7 +41,10 @@ export const POST = apiHandler("POST /api/scoreboard/sessions", async (request: 
             discordGuildId: guild.resolved.guildId,
             name: payload.name?.trim() || null,
         },
-        include: { entries: { orderBy: { playerName: "asc" } } },
+        include: {
+            entries: { orderBy: { playerName: "asc" } },
+            shares: { select: { shareUrl: true, updatedAt: true } },
+        },
     });
 
     publishLiveUpdate({ topic: "scoreboard", guildId: guild.resolved.guildId });

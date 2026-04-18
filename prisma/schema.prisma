@@ -19,6 +19,7 @@ model User {
   sessions        Session[]
   selectedGuild   SelectedGuild?
   selectedRosterSessions RosterSelectedSession[]
+  selectedScoreboardRosterSessions ScoreboardSelectedRosterSession[]
   guildAccesses   GuildUserAccess[]
   bansIssued      BannedDiscordUser[]
   globalAdmin     GlobalAdmin?
@@ -118,6 +119,7 @@ model Roster {
   shares         RosterSessionShare[]
   groups         RosterGroup[]
   selectedByUsers RosterSelectedSession[]
+  selectedByScoreboardSessions ScoreboardSelectedRosterSession[]
   participantOverrides RosterParticipantOverride[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -266,10 +268,45 @@ model ScoreboardSession {
   name           String?
   status         String            @default("DRAFT")
   entries        ScoreboardEntry[]
+  shares         ScoreboardSessionShare[]
+  selectedRosterSessions ScoreboardSelectedRosterSession[]
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
   @@index([discordGuildId, createdAt(sort: Desc)])
+}
+
+model ScoreboardSessionShare {
+  id             String            @id @default(cuid())
+  sessionId      String            @unique
+  discordGuildId String
+  shareTokenHash String            @unique
+  shareUrl       String?           @db.Text
+  createdByUserId String?
+  session        ScoreboardSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([discordGuildId])
+}
+
+model ScoreboardSelectedRosterSession {
+  id                  String            @id @default(cuid())
+  userId              String
+  discordGuildId      String
+  scoreboardSessionId String
+  rosterId            String
+  selectedAt          DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scoreboardSession   ScoreboardSession @relation(fields: [scoreboardSessionId], references: [id], onDelete: Cascade)
+  roster              Roster            @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, discordGuildId, scoreboardSessionId])
+  @@index([discordGuildId])
+  @@index([scoreboardSessionId])
+  @@index([rosterId])
 }
 
 model ScoreboardEntry {

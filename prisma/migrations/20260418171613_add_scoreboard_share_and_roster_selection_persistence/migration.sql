@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "ScoreboardSelectedRosterSession_userId_discordGuildId_scoreboar" RENAME TO "ScoreboardSelectedRosterSession_userId_discordGuildId_score_key";

@@ -24,7 +24,10 @@ export const GET = apiHandler(
         const scoreboardSession = await withApiTiming("GET /api/scoreboard/sessions/[id]", () =>
             prisma.scoreboardSession.findFirst({
                 where: { id, discordGuildId: guild.resolved.guildId },
-                include: { entries: { orderBy: { playerName: "asc" } } },
+                include: {
+                    entries: { orderBy: { playerName: "asc" } },
+                    shares: { select: { shareUrl: true, updatedAt: true } },
+                },
             }),
         );
 
@@ -71,7 +74,10 @@ export const PATCH = apiHandler(
                     ...(payload.name !== undefined && { name: payload.name?.trim() || null }),
                     ...(payload.status !== undefined && { status: payload.status }),
                 },
-                include: { entries: { orderBy: { playerName: "asc" } } },
+                include: {
+                    entries: { orderBy: { playerName: "asc" } },
+                    shares: { select: { shareUrl: true, updatedAt: true } },
+                },
             }),
         );
 
