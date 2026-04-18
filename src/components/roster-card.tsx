@@ -3253,8 +3253,9 @@ export function RosterCard() {
                     key={specKey}
                     className="inline-flex items-center gap-1 rounded-full border border-slate-700/70 bg-slate-900/60 px-2 py-1 text-[11px] text-slate-300"
                   >
-                    <span>{EUNA_SPEC_LABELS[specKey] ?? specKey}</span>
-                    <span className="text-slate-500">-&gt;</span>
+                    <span className="text-slate-100">
+                      {EUNA_SPEC_LABELS[specKey] ?? specKey}
+                    </span>
                     {specKey === "crescentwave" ? (
                       <FontAwesomeIcon
                         icon={faKhanda}
@@ -3263,9 +3264,6 @@ export function RosterCard() {
                     ) : (
                       <RoleIcon role={mappedRole} />
                     )}
-                    <span className="text-slate-100">
-                      {EUNA_SPEC_LABELS[specKey] ?? specKey}
-                    </span>
                   </span>
                 ),
               )}
