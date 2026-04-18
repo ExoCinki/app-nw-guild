@@ -21,7 +21,12 @@ import {
   faKhanda,
 } from "@fortawesome/free-solid-svg-icons";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -1432,9 +1437,11 @@ export function RosterCard() {
     refetchOnWindowFocus: false,
   });
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ["roster", activeSessionId],
     queryFn: () => fetchRoster(activeSessionId),
+    enabled: Boolean(activeSessionId),
+    placeholderData: keepPreviousData,
     staleTime: 2 * 60 * 1000, // Keep data fresh for 2 minutes
     refetchOnWindowFocus: false, // Disabled since we use optimistic updates
     refetchOnReconnect: true, // Only refetch if connection is restored
@@ -2062,7 +2069,20 @@ export function RosterCard() {
     }
   }
 
-  if (isLoading) {
+  const isInitialLoading =
+    sessionsQuery.isLoading ||
+    (!activeSessionId && sessionsQuery.isFetching) ||
+    (Boolean(activeSessionId) && isLoading && !data);
+
+  const currentRosterSessionId = data?.rosterSession?.id ?? null;
+
+  const isSessionSwitching =
+    Boolean(activeSessionId) &&
+    Boolean(currentRosterSessionId) &&
+    currentRosterSessionId !== activeSessionId &&
+    isFetching;
+
+  if (isInitialLoading) {
     return <LoadingIndicator />;
   }
 
@@ -2300,6 +2320,7 @@ export function RosterCard() {
           sessions={sessionsQuery.data ?? []}
           activeSession={activeSession}
           activeShareUrl={activeShareUrl}
+          isSessionSwitching={isSessionSwitching}
           isCreatingSession={createSessionMutation.isPending}
           isRenamingSession={renameSessionMutation.isPending}
           isLockingSession={lockSessionMutation.isPending}

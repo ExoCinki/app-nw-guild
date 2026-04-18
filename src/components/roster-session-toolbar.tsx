@@ -39,6 +39,7 @@ type RosterSessionToolbarProps = {
   sessions: RosterSessionSummary[];
   activeSession: RosterSessionSummary | null;
   activeShareUrl: string | null;
+  isSessionSwitching: boolean;
   isCreatingSession: boolean;
   isRenamingSession: boolean;
   isLockingSession: boolean;
@@ -63,6 +64,7 @@ export function RosterSessionToolbar({
   sessions,
   activeSession,
   activeShareUrl,
+  isSessionSwitching,
   isCreatingSession,
   isRenamingSession,
   isLockingSession,
@@ -108,6 +110,12 @@ export function RosterSessionToolbar({
         >
           New session
         </button>
+        {isSessionSwitching ? (
+          <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-300">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-sky-400" />
+            Loading session...
+          </span>
+        ) : null}
         <button
           type="button"
           onClick={onRenameSession}
