@@ -372,7 +372,14 @@ export function ServerConfigurationCard() {
         });
       }
       setEditingField(null);
-      toast.success("Configuration saved.");
+      if (field === "channelIds") {
+        const savedCount =
+          data.configuration.channelIds?.length ??
+          parseIdListFromString(data.configuration.channelId).length;
+        toast.success(`Channel IDs saved (${savedCount}).`);
+      } else {
+        toast.success("Configuration saved.");
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unknown API error.";
@@ -413,6 +420,7 @@ export function ServerConfigurationCard() {
   const addableRoles = roles.filter(
     (role) => !zooMemberRoleIds.includes(role.id),
   );
+  const parsedChannelIds = parseIdListFromString(channelIdsInput);
 
   function handleAddRole() {
     if (!roleToAdd) {
@@ -513,6 +521,27 @@ export function ServerConfigurationCard() {
             <p className="mt-2 text-xs text-slate-500">
               Separate channel IDs with commas.
             </p>
+            <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/50 px-2 py-2">
+              <div className="mb-1 text-xs text-slate-500">
+                Saved/parsed channels: {parsedChannelIds.length}
+              </div>
+              {parsedChannelIds.length === 0 ? (
+                <p className="text-xs text-slate-600">
+                  No channel ID configured.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {parsedChannelIds.map((channelId) => (
+                    <span
+                      key={channelId}
+                      className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200"
+                    >
+                      {channelId}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           <div>
