@@ -22,31 +22,44 @@ function resolveRuntimeDatabaseUrl() {
         ["POSTGRES_URL", process.env.POSTGRES_URL],
     ];
 
-    const match = candidates.find(([, value]) => Boolean(value?.trim()));
+    const availableCandidates = candidates.filter(([, value]) => Boolean(value?.trim()));
 
-    if (!match) {
+    if (availableCandidates.length === 0) {
         throw new Error(
             "No database URL found. Set DATABASE_URL (runtime) and DIRECT_URL (migrations).",
         );
     }
 
-    const [sourceName, sourceValue] = match;
+    for (const [, sourceValue] of availableCandidates) {
+        try {
+            const parsed = new URL(sourceValue as string);
 
-    try {
-        const parsed = new URL(sourceValue as string);
-        if (parsed.username === "prisma_migration") {
-            throw new Error(
-                `Runtime DB URL from ${sourceName} uses migration role 'prisma_migration'. Point APP_DATABASE_URL (or your *_SECOND runtime var) to an app/runtime connection string.`,
-            );
+            if (parsed.username === "prisma_migration") {
+                continue;
+            }
+
+            // Keep runtime serverless traffic conservative to avoid exhausting
+            // role-level connection caps when the provider uses transaction pooling.
+            if (!parsed.searchParams.has("connection_limit")) {
+                parsed.searchParams.set("connection_limit", "1");
+            }
+            if (!parsed.searchParams.has("pool_timeout")) {
+                parsed.searchParams.set("pool_timeout", "20");
+            }
+
+            return parsed.toString();
+        } catch {
+            // Ignore parsing errors here; Prisma will throw on invalid URL if selected.
+            if (sourceValue) {
+                return sourceValue;
+            }
         }
-    } catch (error) {
-        if (error instanceof Error && error.message.includes("prisma_migration")) {
-            throw error;
-        }
-        // Ignore URL parsing errors and let Prisma handle malformed URLs.
     }
 
-    return sourceValue as string;
+    const configuredSources = availableCandidates.map(([name]) => name).join(", ");
+    throw new Error(
+        `All configured runtime database URLs (${configuredSources}) use migration role 'prisma_migration'. Set APP_DATABASE_URL to an app/runtime URL.`,
+    );
 }
 
 const runtimeDatabaseUrl = resolveRuntimeDatabaseUrl();
