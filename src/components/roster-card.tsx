@@ -2472,13 +2472,13 @@ export function RosterCard() {
           {/* Player list */}
           {selectedEventId ? (
             <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40">
-              <div className="border-b border-slate-800 px-3 py-2 flex items-center justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+              <div className="flex flex-col gap-2 border-b border-slate-800 px-2.5 py-1.5 sm:flex-row sm:items-start sm:justify-between sm:px-3 sm:py-2">
+                <h3 className="shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 sm:text-xs sm:tracking-[0.2em]">
                   Players ({totalParticipantsCount})
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5 sm:justify-end sm:gap-2">
                   {mercPlayersCount > 0 && (
-                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
+                    <span className="whitespace-nowrap rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400 sm:px-2 sm:text-[10px]">
                       {mercPlayersCount} mercs
                     </span>
                   )}
@@ -2486,7 +2486,7 @@ export function RosterCard() {
                     type="button"
                     onClick={resetAllEventOverrides}
                     disabled={!hasAnyEventOverride}
-                    className="rounded border border-slate-700/70 px-2 py-0.5 text-[10px] font-medium text-slate-300 transition hover:border-sky-500/60 hover:text-sky-300 disabled:opacity-40"
+                    className="whitespace-nowrap rounded border border-slate-700/70 px-1.5 py-0.5 text-[9px] font-medium text-slate-300 transition hover:border-sky-500/60 hover:text-sky-300 disabled:opacity-40 sm:px-2 sm:text-[10px]"
                     title="Reset all participant overrides for this event"
                   >
                     Reset All Overrides
@@ -2498,12 +2498,12 @@ export function RosterCard() {
               {participantsQuery.isLoading ? null : participantsQuery.isError ? null : (participantsQuery
                   .data?.participants.length ?? 0) ===
                 0 ? null : participantRoleBadges.length === 0 ? null : (
-                <div className="flex flex-wrap gap-1.5 border-b border-slate-800 px-3 py-2">
+                <div className="flex flex-wrap gap-1 border-b border-slate-800 px-2.5 py-1.5 sm:gap-1.5 sm:px-3 sm:py-2">
                   {participantRoleBadges.map(
                     ({ key, count, icon, color, label }) => (
                       <span
                         key={key}
-                        className="flex items-center gap-1 rounded-full border border-slate-700/60 bg-slate-900/60 px-2 py-0.5 text-xs font-medium"
+                        className="flex items-center gap-1 whitespace-nowrap rounded-full border border-slate-700/60 bg-slate-900/60 px-1.5 py-0.5 text-[11px] font-medium sm:px-2 sm:text-xs"
                       >
                         <FontAwesomeIcon
                           icon={icon}
@@ -2513,7 +2513,7 @@ export function RosterCard() {
                           {count}
                         </span>
                         {selectedImportFilterPreset === "euna" ? (
-                          <span className="text-[10px] text-slate-300">
+                          <span className="text-[9px] text-slate-300 sm:text-[10px]">
                             {label}
                           </span>
                         ) : null}
@@ -2540,16 +2540,16 @@ export function RosterCard() {
               ) : (
                 <>
                   {/* Search input */}
-                  <div className="border-b border-slate-800 px-2 py-2">
+                  <div className="border-b border-slate-800 px-2 py-1.5 sm:py-2">
                     <input
                       type="text"
                       value={playerSearch}
                       onChange={(e) => setPlayerSearch(e.target.value)}
                       placeholder="Search player..."
-                      className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-100 outline-none focus:border-sky-500 placeholder:text-slate-500"
+                      className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-500 sm:text-xs"
                     />
                   </div>
-                  <div className="flex max-h-[calc(100vh-360px)] flex-col gap-1 overflow-auto p-2">
+                  <div className="flex max-h-[calc(100vh-360px)] flex-col gap-1 overflow-auto p-1.5 sm:p-2">
                     {sortedParticipants.length === 0 ? (
                       <p className="px-1 py-2 text-xs text-slate-500">
                         No player found.
@@ -2625,15 +2625,15 @@ export function RosterCard() {
                               );
                               event.dataTransfer.effectAllowed = "copy";
                             }}
-                            className={`flex flex-col gap-1 rounded-lg border bg-slate-900/80 px-2 py-1.5 transition hover:bg-slate-900 ${isMerc ? "border-amber-500/40 hover:border-amber-500/60" : "border-slate-800 hover:border-sky-500/40"} ${isEditingName ? "cursor-default" : "cursor-grab"}`}
+                            className={`flex flex-col gap-1 rounded-lg border bg-slate-900/80 px-1.5 py-1 transition hover:bg-slate-900 sm:px-2 sm:py-1.5 ${isMerc ? "border-amber-500/40 hover:border-amber-500/60" : "border-slate-800 hover:border-sky-500/40"} ${isEditingName ? "cursor-default" : "cursor-grab"}`}
                           >
                             {/* Row 1: icon + name + merc button */}
-                            <div className="flex items-center gap-1.5">
-                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-800">
+                            <div className="flex items-center gap-1 sm:gap-1.5">
+                              <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-800 sm:h-6 sm:w-6">
                                 <RoleIcon role={overriddenRole} />
                               </div>
                               {selectedImportFilterPreset === "euna" ? (
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-800">
+                                <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-slate-800 sm:h-6 sm:w-6">
                                   <FactionIcon faction={eunaFaction} />
                                 </div>
                               ) : null}
@@ -2676,7 +2676,7 @@ export function RosterCard() {
                                 />
                               ) : (
                                 <div
-                                  className="min-w-0 flex-1 truncate text-xs font-medium text-slate-100 cursor-text"
+                                  className="min-w-0 flex-1 cursor-text truncate text-[11px] font-medium text-slate-100 sm:text-xs"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setEditingNameKey(participantKey);
@@ -2700,7 +2700,7 @@ export function RosterCard() {
                                     [participantKey]: !prev[participantKey],
                                   }));
                                 }}
-                                className={`shrink-0 rounded px-1 py-0 text-[9px] font-bold uppercase transition ${isMerc ? "bg-amber-500/30 text-amber-400 hover:bg-amber-500/50" : "bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-300"}`}
+                                className={`shrink-0 rounded px-1 py-0 text-[8px] font-bold uppercase transition sm:text-[9px] ${isMerc ? "bg-amber-500/30 text-amber-400 hover:bg-amber-500/50" : "bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-300"}`}
                                 title="Toggle mercenary"
                               >
                                 M
@@ -2712,7 +2712,7 @@ export function RosterCard() {
                                   markParticipantOverridesReset(participantKey);
                                 }}
                                 disabled={!hasAnyPlayerOverride}
-                                className="shrink-0 rounded border border-slate-700/70 px-1 py-0 text-[9px] font-bold uppercase text-slate-400 transition hover:border-sky-500/60 hover:text-sky-300 disabled:opacity-40"
+                                className="shrink-0 rounded border border-slate-700/70 px-1 py-0 text-[8px] font-bold uppercase text-slate-400 transition hover:border-sky-500/60 hover:text-sky-300 disabled:opacity-40 sm:text-[9px]"
                                 title="Reset all overrides for this player"
                               >
                                 R
