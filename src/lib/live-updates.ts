@@ -84,7 +84,18 @@ async function createRedisClient(url: string): Promise<RedisLikeClient> {
     const redisModule = await import("ioredis");
     const RedisCtor = redisModule.default;
 
-    return new RedisCtor(url, {
+    const parsed = new URL(url);
+
+    const dbFromPath = parsed.pathname.replace(/^\//, "").trim();
+    const db = dbFromPath ? Number.parseInt(dbFromPath, 10) : undefined;
+
+    return new RedisCtor({
+        host: parsed.hostname,
+        port: parsed.port ? Number.parseInt(parsed.port, 10) : 6379,
+        username: parsed.username || undefined,
+        password: parsed.password || undefined,
+        db: Number.isNaN(db ?? Number.NaN) ? undefined : db,
+        tls: parsed.protocol === "rediss:" ? {} : undefined,
         maxRetriesPerRequest: null,
         enableOfflineQueue: true,
     }) as unknown as RedisLikeClient;
