@@ -16,6 +16,7 @@ cp .env.example .env
 2. Fill `.env`:
 
 - `DATABASE_URL`: PostgreSQL connection string
+- `DIRECT_URL`: direct PostgreSQL connection for Prisma migrations (keep migration credentials here, not in `DATABASE_URL`)
 - `NEXTAUTH_SECRET`: random secret (at least 32 chars)
 - `NEXTAUTH_URL`: usually `http://localhost:3000`
 - `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET`: from Discord Developer Portal

@@ -83,6 +83,8 @@ export function RosterSessionToolbar({
   onOpenClearConfirm,
   onDeleteSession,
 }: RosterSessionToolbarProps) {
+  const isActiveSessionLocked = Boolean(activeSession?.isLocked);
+
   return (
     <div className="flex w-full max-w-[980px] flex-col gap-2 xl:items-end">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-950/40 p-2">
@@ -179,9 +181,13 @@ export function RosterSessionToolbar({
         <button
           type="button"
           onClick={onOpenClearConfirm}
-          disabled={isClearing}
+          disabled={!activeSessionId || isActiveSessionLocked || isClearing}
           className={actionButtonClass("danger", true)}
-          title="Clear roster"
+          title={
+            isActiveSessionLocked
+              ? "Cannot clear a locked session"
+              : "Clear roster"
+          }
         >
           <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
           Clear
@@ -189,9 +195,15 @@ export function RosterSessionToolbar({
         <button
           type="button"
           onClick={onDeleteSession}
-          disabled={!activeSessionId || isDeletingSession}
+          disabled={
+            !activeSessionId || isActiveSessionLocked || isDeletingSession
+          }
           className={actionButtonClass("dangerAlt")}
-          title="Delete session"
+          title={
+            isActiveSessionLocked
+              ? "Cannot delete a locked session"
+              : "Delete session"
+          }
         >
           Delete
         </button>

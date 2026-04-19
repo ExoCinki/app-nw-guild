@@ -308,9 +308,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Roster session not found" }, { status: 404 });
     }
 
-    if (rosterSession.isLocked && rosterSession.lockedByUserId && rosterSession.lockedByUserId !== resolved.userId) {
+    if (rosterSession.isLocked) {
         return NextResponse.json(
-            { error: "This roster session is locked by another user" },
+            { error: "This roster session is locked and cannot be cleared" },
             { status: 403 },
         );
     }

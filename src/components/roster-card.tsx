@@ -90,6 +90,10 @@ function withMercenaryPrefix(value: string | null | undefined) {
   return normalized ? `[M] ${normalized}` : null;
 }
 
+function normalizeAssignedPlayerName(value: string | null | undefined) {
+  return stripMercenaryPrefix(value).trim().toLowerCase();
+}
+
 function formatRefreshDateTime(value: string | Date | null | undefined) {
   if (!value) {
     return "Never";
@@ -2105,7 +2109,9 @@ export function RosterCard() {
 
   const assignedPlayerNames = new Set(
     [...groups, ...(enableSecondRoster ? secondGroups : [])].flatMap((g) =>
-      g.slots.map((s) => s.playerName).filter(Boolean),
+      g.slots
+        .map((s) => normalizeAssignedPlayerName(s.playerName))
+        .filter(Boolean),
     ) as string[],
   );
 
@@ -2133,7 +2139,9 @@ export function RosterCard() {
 
   const sortedParticipants = [...(participantsQuery.data?.participants ?? [])]
     .filter((p) => {
-      const key = p.name?.trim() || p.userId?.trim();
+      const key = normalizeAssignedPlayerName(
+        p.name?.trim() || p.userId?.trim(),
+      );
       if (key && assignedPlayerNames.has(key)) return false;
       if (!shouldIncludeParticipantByPreset(p, selectedImportFilterPreset)) {
         return false;
