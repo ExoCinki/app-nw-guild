@@ -2280,6 +2280,25 @@ export function RosterCard() {
     lockSessionMutation.mutate(!Boolean(activeSession?.isLocked));
   }
 
+  async function handleShareSession() {
+    if (!activeSessionId) {
+      toast.error("No roster session selected.");
+      return;
+    }
+
+    if (activeShareUrl) {
+      try {
+        await navigator.clipboard.writeText(activeShareUrl);
+        toast.success("Share link copied to clipboard.");
+      } catch {
+        toast.error("Unable to copy share link.");
+      }
+      return;
+    }
+
+    shareSessionMutation.mutate();
+  }
+
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30 backdrop-blur">
       <ActionConfirmModal
@@ -2333,7 +2352,7 @@ export function RosterCard() {
           onCreateSession={() => createSessionMutation.mutate(undefined)}
           onRenameSession={handleRenameSession}
           onToggleLockSession={handleToggleLockSession}
-          onShareSession={() => shareSessionMutation.mutate()}
+          onShareSession={handleShareSession}
           onDisableShare={() => disableShareMutation.mutate()}
           onOpenArchiveConfirm={() => setShowArchiveConfirm(true)}
           onOpenClearConfirm={() => setShowClearConfirm(true)}

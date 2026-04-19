@@ -150,10 +150,10 @@ export function RosterSessionToolbar({
           onClick={onShareSession}
           disabled={!activeSessionId || isSharingSession}
           className={actionButtonClass("primary", true)}
-          title="Generate share link"
+          title={activeShareUrl ? "Copy share link" : "Generate share link"}
         >
           <FontAwesomeIcon icon={faShareNodes} className="h-3 w-3" />
-          Share
+          {activeShareUrl ? "Copy link" : "Share"}
         </button>
         {activeShareUrl ? (
           <button

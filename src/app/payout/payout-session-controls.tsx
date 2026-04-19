@@ -91,11 +91,15 @@ export function PayoutSessionControls({
         <div className="flex flex-col gap-2 sm:flex-row">
           <LoadingButton
             type="button"
-            onClick={onCreateShareLink}
+            onClick={selectedSharedLink ? onCopyShareLink : onCreateShareLink}
             isLoading={isCreateShareLinkPending}
             className="px-3 py-2 rounded bg-indigo-600 hover:bg-indigo-700"
+            title={selectedSharedLink ? "Copy link" : "Create link"}
           >
-            <FontAwesomeIcon icon={faShareNodes} /> Create link
+            <FontAwesomeIcon
+              icon={selectedSharedLink ? faCopy : faShareNodes}
+            />{" "}
+            {selectedSharedLink ? "Copy link" : "Create link"}
           </LoadingButton>
 
           <div className="flex flex-1 gap-2">
